@@ -1,0 +1,14 @@
+{
+  "baseUrl": "https://你的用户名.github.io/仓库名",
+  "entries": [
+    {
+      "id": "alice-2024",
+      "question": "我们第一次见面的地方是哪里？",
+      "answer": "西湖边的星巴克",
+      "content": {
+        "text": "亲爱的 Alice，这是我们一起度过的美好时光…\n\n支持多行文本。",
+        "photos": ["/path/to/photo1.jpg", "/path/to/photo2.jpg"]
+      }
+    }
+  ]
+}

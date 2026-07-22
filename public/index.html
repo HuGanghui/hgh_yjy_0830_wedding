@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>🔒 解锁</title>
+<style>
+  /* ── Reset & Base ──────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #faf8f5;
+    --card-bg: #ffffff;
+    --text: #2c2416;
+    --text-secondary: #6b5e4a;
+    --accent: #8b6f4e;
+    --accent-hover: #6d5539;
+    --border: #e7e0d5;
+    --error: #c0392b;
+    --error-bg: #fef5f5;
+    --success: #3a7d44;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+    --radius: 12px;
+  }
+
+  html { font-size: 16px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    line-height: 1.7;
+  }
+
+  /* ── Card ──────────────────────────────────── */
+  .card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    width: 100%;
+    max-width: 420px;
+    padding: 32px 28px;
+    transition: all 0.3s ease;
+  }
+
+  /* ── Lock icon ─────────────────────────────── */
+  .icon-wrap {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .lock-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f5ede0, #ede3d3);
+    font-size: 28px;
+  }
+
+  /* ── Question ──────────────────────────────── */
+  .question {
+    text-align: center;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
+
+  /* ── Input ─────────────────────────────────── */
+  .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .input-group input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: inherit;
+    color: var(--text);
+    background: #fdfcf9;
+    outline: none;
+    transition: border-color 0.2s;
+    -webkit-appearance: none;
+  }
+  .input-group input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(139,111,78,0.1);
+  }
+  .input-group input::placeholder {
+    color: #c4b9a6;
+  }
+  .input-group input.shake {
+    animation: shake 0.4s ease;
+    border-color: var(--error);
+  }
+
+  .btn {
+    width: 100%;
+    padding: 12px 0;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+    -webkit-appearance: none;
+  }
+  .btn:hover { background: var(--accent-hover); }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .error-msg {
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--error);
+    min-height: 1.4em;
+    transition: opacity 0.2s;
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
+
+  /* ── Content (unlocked state) ──────────────── */
+  .unlocked { display: none; }
+  .unlocked.active { display: block; }
+
+  .content-text {
+    font-size: 1rem;
+    line-height: 1.9;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-bottom: 20px;
+  }
+
+  .photos {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .photos img {
+    width: 100%;
+    border-radius: 8px;
+    display: block;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+
+  /* ── State transitions ─────────────────────── */
+  .locked { display: block; }
+  .locked.hidden { display: none; }
+
+  .loading-wrap {
+    text-align: center;
+    padding: 40px 0;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+  }
+  .spinner {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    border: 2.5px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-bottom: 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Error states ────────────────────────────── */
+  .state-error {
+    display: none;
+    text-align: center;
+    padding: 24px 0;
+    color: var(--text-secondary);
+  }
+  .state-error.active { display: block; }
+
+  /* ── Footer ────────────────────────────────── */
+  .footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 0.78rem;
+    color: #c4b9a6;
+  }
+
+  /* ── Responsive ────────────────────────────── */
+  @media (max-width: 400px) {
+    .card { padding: 24px 18px; }
+    .question { font-size: 0.98rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="card" id="app">
+  <!-- ═══ Loading ═══ -->
+  <div id="loading" class="loading-wrap active">
+    <div class="spinner"></div>
+    <p>加载中…</p>
+  </div>
+
+  <!-- ═══ Locked ═══ -->
+  <div id="locked" class="locked" style="display:none">
+    <div class="icon-wrap">
+      <span class="lock-icon">🔒</span>
+    </div>
+    <div class="question" id="question"></div>
+    <div class="input-group">
+      <input type="text" id="answer-input" placeholder="请输入答案" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <button class="btn" id="unlock-btn">解 锁</button>
+    </div>
+    <p class="error-msg" id="error-msg"></p>
+  </div>
+
+  <!-- ═══ Unlocked ═══ -->
+  <div id="unlocked" class="unlocked">
+    <div class="icon-wrap">
+      <span style="font-size:32px">✨</span>
+    </div>
+    <div class="content-text" id="content-text"></div>
+    <div class="photos" id="photos"></div>
+  </div>
+
+  <!-- ═══ Error state ═══ -->
+  <div id="state-error" class="state-error">
+    <p style="font-size:2rem;margin-bottom:12px">😕</p>
+    <p id="state-error-msg">无法加载内容</p>
+  </div>
+
+  <div class="footer">扫码解锁 · 答对可见</div>
+</div>
+
+<script>
+(async function () {
+  // ── DOM refs ─────────────────────────────────
+  const $loading   = document.getElementById('loading');
+  const $locked    = document.getElementById('locked');
+  const $unlocked  = document.getElementById('unlocked');
+  const $stateErr  = document.getElementById('state-error');
+  const $question  = document.getElementById('question');
+  const $answer    = document.getElementById('answer-input');
+  const $unlockBtn = document.getElementById('unlock-btn');
+  const $errorMsg  = document.getElementById('error-msg');
+  const $content   = document.getElementById('content-text');
+  const $photos    = document.getElementById('photos');
+  const $stateErrMsg = document.getElementById('state-error-msg');
+
+  // ── Parse URL param ──────────────────────────
+  const params = new URLSearchParams(window.location.search);
+  const entryId = params.get('id');
+
+  if (!entryId) {
+    showStateError('缺少参数：请在 URL 中提供 ?id= 参数');
+    return;
+  }
+
+  // ── Fetch encrypted data ─────────────────────
+  let data;
+  try {
+    const resp = await fetch('data.json');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    data = await resp.json();
+  } catch (err) {
+    showStateError('数据加载失败，请稍后重试');
+    return;
+  }
+
+  const entry = data[entryId];
+  if (!entry) {
+    showStateError('无效的链接：未找到对应内容');
+    return;
+  }
+
+  // ── Show locked UI ───────────────────────────
+  $loading.style.display = 'none';
+  $locked.style.display = 'block';
+  $question.textContent = entry.question;
+  $answer.focus();
+
+  // ── Helper: base64 → Uint8Array ──────────────
+  function base64ToBytes(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) {
+      bytes[i] = bin.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  // ── Helper: string → Uint8Array (UTF-8) ─────
+  function strToBytes(str) {
+    return new TextEncoder().encode(str);
+  }
+
+  // ── Unlock handler ───────────────────────────
+  async function tryUnlock() {
+    const answer = $answer.value.trim();
+    if (!answer) {
+      showError('请输入答案');
+      return;
+    }
+
+    // Disable UI during decryption
+    $unlockBtn.disabled = true;
+    $unlockBtn.textContent = '验证中…';
+    $errorMsg.textContent = '';
+
+    try {
+      // Step 1: Decode stored data
+      const salt = base64ToBytes(entry.salt);
+      const combined = base64ToBytes(entry.data);
+
+      // Split: iv (12 bytes) | ciphertext+authTag
+      const iv = combined.slice(0, 12);
+      const ciphertext = combined.slice(12);
+
+      // Step 2: PBKDF2 key derivation (browser)
+      const answerBytes = strToBytes(answer);
+      const baseKey = await crypto.subtle.importKey(
+        'raw',
+        answerBytes,
+        { name: 'PBKDF2' },
+        false,
+        ['deriveKey']
+      );
+
+      const aesKey = await crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: salt,
+          iterations: 100000,
+          hash: 'SHA-256'
+        },
+        baseKey,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+      );
+
+      // Step 3: AES-GCM decryption
+      // Web Crypto expects ciphertext || authTag (last 16 bytes are auth tag)
+      const plaintext = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        aesKey,
+        ciphertext
+      );
+
+      // Step 4: Parse and render
+      const decoder = new TextDecoder();
+      const json = JSON.parse(decoder.decode(plaintext));
+
+      showUnlocked(json);
+
+    } catch (err) {
+      // AES-GCM auth tag verification fails → wrong answer
+      // Other errors (JSON parse etc) also caught here
+      console.error('Decrypt failed:', err.name, err.message);
+      showError('答案不正确，请再试一次');
+      $answer.classList.add('shake');
+      setTimeout(() => $answer.classList.remove('shake'), 400);
+      $answer.select();
+    } finally {
+      $unlockBtn.disabled = false;
+      $unlockBtn.textContent = '解 锁';
+    }
+  }
+
+  // ── Blob URL 管理 ────────────────────────────
+  // 页面关闭时自动回收，也可主动调用 cleanupBlobUrls()
+  const blobUrls = [];
+
+  function cleanupBlobUrls() {
+    for (const url of blobUrls) {
+      URL.revokeObjectURL(url);
+    }
+    blobUrls.length = 0;
+  }
+
+  // 监听页面卸载，确保 Blob URL 被回收
+  window.addEventListener('beforeunload', cleanupBlobUrls);
+  window.addEventListener('pagehide', cleanupBlobUrls);
+
+  // ── UI helpers ───────────────────────────────
+  function showError(msg) {
+    $errorMsg.textContent = msg;
+  }
+
+  function showUnlocked(payload) {
+    $locked.style.display = 'none';
+    $unlocked.classList.add('active');
+
+    // Render text
+    if (payload.text) {
+      $content.textContent = payload.text;
+    }
+
+    // Render photos from Base64 via Blob URL
+    // Blob URL 只在当前页面会话内存中存在，关闭页面即失效
+    // 无法被书签保存、无法通过 URL 直接访问
+    if (payload.photos && payload.photos.length > 0) {
+      $photos.innerHTML = '';
+      for (const photo of payload.photos) {
+        // 兼容旧格式：如果是字符串则当作普通 URL
+        if (typeof photo === 'string') {
+          const img = document.createElement('img');
+          img.src = photo;
+          img.alt = '照片';
+          img.loading = 'lazy';
+          $photos.appendChild(img);
+          continue;
+        }
+
+        // 新格式：{ name, type, data } → Blob URL
+        try {
+          const binaryStr = atob(photo.data);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: photo.type });
+          const blobUrl = URL.createObjectURL(blob);
+          blobUrls.push(blobUrl);
+
+          const img = document.createElement('img');
+          img.src = blobUrl;
+          img.alt = photo.name || '照片';
+          img.loading = 'lazy';
+          $photos.appendChild(img);
+        } catch (e) {
+          console.error('照片解码失败:', photo.name, e);
+        }
+      }
+    }
+  }
+
+  function showStateError(msg) {
+    $loading.style.display = 'none';
+    $locked.style.display = 'none';
+    $stateErr.classList.add('active');
+    $stateErrMsg.textContent = msg;
+  }
+
+  // ── Bind events ──────────────────────────────
+  $unlockBtn.addEventListener('click', tryUnlock);
+  $answer.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') tryUnlock();
+  });
+
+})();
+</script>
+
+</body>
+</html>

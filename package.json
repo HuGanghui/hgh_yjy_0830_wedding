@@ -1,0 +1,12 @@
+{
+  "name": "qr-unlock",
+  "version": "1.0.0",
+  "description": "QR 码加密解锁系统 — 扫码回答问题，答对才能看到内容",
+  "private": true,
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}
