@@ -2,12 +2,16 @@
   "baseUrl": "https://你的用户名.github.io/仓库名",
   "entries": [
     {
-      "id": "alice-2024",
+      "id": "demo",
+      "to": "阿杰",
       "question": "我们第一次见面的地方是哪里？",
       "answer": "西湖边的星巴克",
-      "content": {
-        "text": "亲爱的 Alice，这是我们一起度过的美好时光…\n\n支持多行文本。",
-        "photos": ["/path/to/photo1.jpg", "/path/to/photo2.jpg"]
+      "photo": "assets/demo-photo.jpg",
+      "description": "这是我们的第一张合照。扫到这张 QR 的你，还记得这张照片的故事吗？",
+      "secret": {
+        "text": "答对啦！这是我们私藏的回忆，只想让你一个人看到……",
+        "images": ["assets/secret-1.jpg", "assets/secret-2.jpg"],
+        "videos": ["assets/secret-video.mp4"]
       }
     }
   ]

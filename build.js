@@ -3,20 +3,33 @@ const fs = require('fs');
 const path = require('path');
 const QRCode = require('qrcode');
 
-// ── MIME 类型映射 ──────────────────────────────
-const MIME_TYPES = {
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.bmp': 'image/bmp',
-  '.svg': 'image/svg+xml',
-};
+// ── 生成不可猜测的随机文件名（secret 媒体用） ──
+function randomFileName(originalPath) {
+  const ext = path.extname(originalPath);
+  return crypto.randomBytes(16).toString('hex') + ext;
+}
 
-function getMimeType(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  return MIME_TYPES[ext] || 'application/octet-stream';
+// ── 拷贝单个媒体文件到 public/media/<id>/<folder> ──
+// folder: 'photo'（公开，保留原文件名）| 'secret'（随机文件名）
+function copyMedia(srcPath, id, folder) {
+  const absSrc = path.resolve(srcPath);
+  if (!fs.existsSync(absSrc)) {
+    throw new Error(`文件不存在: ${srcPath}`);
+  }
+
+  const filename = folder === 'photo'
+    ? path.basename(srcPath)
+    : randomFileName(srcPath);
+
+  const outDir = path.join('public', 'media', id, folder);
+  fs.mkdirSync(outDir, { recursive: true });
+
+  const dest = path.join(outDir, filename);
+  fs.copyFileSync(absSrc, dest);
+
+  const sizeKB = (fs.statSync(dest).size / 1024).toFixed(1);
+  const url = path.posix.join('media', id, folder, filename);
+  return { url, sizeKB };
 }
 
 async function main() {
@@ -33,66 +46,78 @@ async function main() {
   fs.mkdirSync('qrcodes', { recursive: true });
   fs.mkdirSync('public', { recursive: true });
 
+  // 每次构建前清空 media 目录，保证构建产物与 data.json 严格一致、不残留孤儿文件
+  fs.rmSync('public/media', { recursive: true, force: true });
+
   const output = {};
   const errors = [];
-  let totalPhotoSize = 0;
 
   for (const entry of config.entries) {
-    const { id, question, answer, content } = entry;
+    const { id, to, question, answer, description, photo, secret } = entry;
 
     // 校验必填字段
-    if (!id || !question || !answer || !content) {
-      errors.push(`[${id || '???'}] 缺少必填字段 (id/question/answer/content)`);
+    if (!id || !to || !question || !answer || !description) {
+      errors.push(`[${id || '???'}] 缺少必填字段 (id/to/question/answer/description)`);
       continue;
     }
     if (output[id]) {
       errors.push(`[${id}] ID 重复，将覆盖之前的条目`);
     }
+    const hasSecretMedia =
+      (secret && secret.images && secret.images.length > 0) ||
+      (secret && secret.videos && secret.videos.length > 0);
+    if (!secret || (!secret.text && !hasSecretMedia)) {
+      errors.push(`[${id}] secret 至少包含 text/images/videos 之一`);
+      continue;
+    }
 
-    // ── 照片 Base64 编码（内嵌到加密 payload） ──
-    const photoEntries = [];
-    if (content.photos && content.photos.length > 0) {
-      for (const photoPath of content.photos) {
-        const srcPath = path.resolve(photoPath);
-        const basename = path.basename(photoPath);
-
-        if (!fs.existsSync(srcPath)) {
-          errors.push(`[${id}] 照片不存在: ${srcPath}`);
-          continue;
-        }
-
-        const fileBuffer = fs.readFileSync(srcPath);
-        const b64 = fileBuffer.toString('base64');
-        const mimeType = getMimeType(basename);
-        const sizeKB = (fileBuffer.length / 1024).toFixed(1);
-
-        photoEntries.push({
-          name: basename,
-          type: mimeType,
-          data: b64
-        });
-
-        totalPhotoSize += fileBuffer.length;
-        console.log(`  📷 [${id}] 照片已编码: ${basename} (${sizeKB} KB, ${mimeType})`);
+    // ── 公开照片（直接可见，保留原文件名） ──
+    let photoUrl = null;
+    if (photo) {
+      try {
+        const r = copyMedia(photo, id, 'photo');
+        photoUrl = r.url;
+        console.log(`  🖼️  [${id}] 公开照片: ${r.url} (${r.sizeKB} KB)`);
+      } catch (err) {
+        errors.push(`[${id}] 公开照片 ${photo}: ${err.message}`);
       }
     }
 
-    if (photoEntries.length > 0) {
-      console.log(`  📦 [${id}] 共 ${photoEntries.length} 张照片将内嵌加密`);
+    // ── secret 媒体（随机文件名，答对后可见） ──
+    const images = [];
+    const videos = [];
+    for (const src of (secret.images || [])) {
+      try {
+        const r = copyMedia(src, id, 'secret');
+        images.push(r.url);
+        console.log(`  🖼️  [${id}] secret 图片: ${r.url} (${r.sizeKB} KB)`);
+      } catch (err) {
+        errors.push(`[${id}] secret 图片 ${src}: ${err.message}`);
+      }
+    }
+    for (const src of (secret.videos || [])) {
+      try {
+        const r = copyMedia(src, id, 'secret');
+        videos.push(r.url);
+        console.log(`  🎬 [${id}] secret 视频: ${r.url} (${r.sizeKB} KB)`);
+      } catch (err) {
+        errors.push(`[${id}] secret 视频 ${src}: ${err.message}`);
+      }
     }
 
     // ── 生成随机 salt 和 IV ────────────────────
     const salt = crypto.randomBytes(16);
     const iv = crypto.randomBytes(12);
 
-    // ── PBKDF2 密钥派生 ────────────────────────
+    // ── PBKDF2 密钥派生（答案即密钥） ────────────
     const key = crypto.pbkdf2Sync(answer, salt, 100000, 32, 'sha256');
 
-    // ── AES-256-GCM 加密 ───────────────────────
-    // 照片 Base64 数据与文字一起加密，统一保护
+    // ── AES-256-GCM 加密 secret payload ────────
+    // 额外内容统一加密；媒体以静态文件路径形式存放
     const payload = JSON.stringify({
-      text: content.text || '',
-      photos: photoEntries
+      text: secret.text || '',
+      images,
+      videos
     });
 
     const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
@@ -104,7 +129,10 @@ async function main() {
     const combined = Buffer.concat([iv, encrypted, authTag]);
 
     output[id] = {
+      to,
       question,
+      description,
+      photo: photoUrl,
       salt: salt.toString('base64'),
       data: combined.toString('base64')
     };
@@ -130,16 +158,11 @@ async function main() {
   // ── 写入 data.json ───────────────────────────
   fs.writeFileSync('public/data.json', JSON.stringify(output), 'utf-8');
 
-  const totalSizeMB = (totalPhotoSize / (1024 * 1024)).toFixed(1);
-
   // ── 汇总 ─────────────────────────────────────
   console.log(`\n${'─'.repeat(50)}`);
   console.log(`📦 共处理 ${Object.keys(output).length} 个条目 → public/data.json`);
   console.log(`📁 QR 码: qrcodes/ 目录`);
-  if (totalPhotoSize > 0) {
-    console.log(`🖼️  照片: ${totalSizeMB} MB（Base64 内嵌加密，不输出独立文件）`);
-  }
-  console.log(`🔐 照片与文字统一加密，只有答对才能获取 Blob URL`);
+  console.log(`📷 媒体: public/media/<id>/ (公开照片 / secret 加密路径)`);
 
   if (errors.length > 0) {
     console.log(`\n⚠️  警告/错误:`);

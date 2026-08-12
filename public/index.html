@@ -45,15 +45,15 @@
     box-shadow: var(--shadow);
     border: 1px solid var(--border);
     width: 100%;
-    max-width: 420px;
+    max-width: 440px;
     padding: 32px 28px;
     transition: all 0.3s ease;
   }
 
-  /* ── Lock icon ─────────────────────────────── */
+  /* ── Icon ──────────────────────────────────── */
   .icon-wrap {
     text-align: center;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
   }
   .lock-icon {
     display: inline-flex;
@@ -66,13 +66,54 @@
     font-size: 28px;
   }
 
-  /* ── Question ──────────────────────────────── */
-  .question {
+  /* ── Public content ────────────────────────── */
+  .public { display: none; }
+  .public.active { display: block; }
+
+  .photo-wrap {
     text-align: center;
+    margin-bottom: 18px;
+  }
+  .photo-wrap img {
+    width: 100%;
+    max-height: 420px;
+    object-fit: cover;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    display: block;
+  }
+
+  .description {
+    font-size: 0.95rem;
+    line-height: 1.8;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-bottom: 22px;
+    padding: 14px 16px;
+    background: #faf7f2;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .question-block {
+    text-align: center;
+    margin-bottom: 18px;
+  }
+  .to-label {
+    display: inline-block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--accent);
+    background: #f5ede0;
+    border-radius: 999px;
+    padding: 4px 16px;
+    margin-bottom: 10px;
+    letter-spacing: 0.02em;
+  }
+  .question {
     font-size: 1.05rem;
     font-weight: 600;
-    color: var(--text);
-    margin-bottom: 20px;
     line-height: 1.6;
   }
 
@@ -141,11 +182,11 @@
     80% { transform: translateX(4px); }
   }
 
-  /* ── Content (unlocked state) ──────────────── */
-  .unlocked { display: none; }
-  .unlocked.active { display: block; }
+  /* ── Secret content (after correct answer) ── */
+  .secret { display: none; }
+  .secret.active { display: block; }
 
-  .content-text {
+  .secret .content-text {
     font-size: 1rem;
     line-height: 1.9;
     color: var(--text);
@@ -154,22 +195,25 @@
     margin-bottom: 20px;
   }
 
-  .photos {
+  .media {
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
-  .photos img {
+  .media img {
     width: 100%;
     border-radius: 8px;
     display: block;
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   }
+  .media video {
+    width: 100%;
+    border-radius: 8px;
+    display: block;
+    background: #000;
+  }
 
-  /* ── State transitions ─────────────────────── */
-  .locked { display: block; }
-  .locked.hidden { display: none; }
-
+  /* ── Loading ───────────────────────────────── */
   .loading-wrap {
     text-align: center;
     padding: 40px 0;
@@ -221,12 +265,20 @@
     <p>加载中…</p>
   </div>
 
-  <!-- ═══ Locked ═══ -->
-  <div id="locked" class="locked" style="display:none">
-    <div class="icon-wrap">
-      <span class="lock-icon">🔒</span>
+  <!-- ═══ Public: 照片 + 描述 + 问题（无需答题即可见） ═══ -->
+  <div id="public" class="public">
+    <div id="photo-wrap" class="photo-wrap" style="display:none">
+      <img id="public-photo" alt="照片">
     </div>
-    <div class="question" id="question"></div>
+    <p class="description" id="description"></p>
+
+    <div class="question-block">
+      <div class="icon-wrap">
+        <span class="lock-icon">🔒</span>
+      </div>
+      <span class="to-label" id="to-label"></span>
+      <p class="question" id="question"></p>
+    </div>
     <div class="input-group">
       <input type="text" id="answer-input" placeholder="请输入答案" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
       <button class="btn" id="unlock-btn">解 锁</button>
@@ -234,13 +286,14 @@
     <p class="error-msg" id="error-msg"></p>
   </div>
 
-  <!-- ═══ Unlocked ═══ -->
-  <div id="unlocked" class="unlocked">
+  <!-- ═══ Secret: 答对后显示的额外内容 ═══ -->
+  <div id="secret" class="secret">
     <div class="icon-wrap">
       <span style="font-size:32px">✨</span>
     </div>
     <div class="content-text" id="content-text"></div>
-    <div class="photos" id="photos"></div>
+    <div class="media" id="secret-images"></div>
+    <div class="media" id="secret-videos"></div>
   </div>
 
   <!-- ═══ Error state ═══ -->
@@ -255,17 +308,22 @@
 <script>
 (async function () {
   // ── DOM refs ─────────────────────────────────
-  const $loading   = document.getElementById('loading');
-  const $locked    = document.getElementById('locked');
-  const $unlocked  = document.getElementById('unlocked');
-  const $stateErr  = document.getElementById('state-error');
-  const $question  = document.getElementById('question');
-  const $answer    = document.getElementById('answer-input');
-  const $unlockBtn = document.getElementById('unlock-btn');
-  const $errorMsg  = document.getElementById('error-msg');
-  const $content   = document.getElementById('content-text');
-  const $photos    = document.getElementById('photos');
-  const $stateErrMsg = document.getElementById('state-error-msg');
+  const $loading      = document.getElementById('loading');
+  const $public       = document.getElementById('public');
+  const $secret       = document.getElementById('secret');
+  const $stateErr     = document.getElementById('state-error');
+  const $photoWrap    = document.getElementById('photo-wrap');
+  const $photo        = document.getElementById('public-photo');
+  const $description  = document.getElementById('description');
+  const $toLabel      = document.getElementById('to-label');
+  const $question     = document.getElementById('question');
+  const $answer       = document.getElementById('answer-input');
+  const $unlockBtn    = document.getElementById('unlock-btn');
+  const $errorMsg     = document.getElementById('error-msg');
+  const $content      = document.getElementById('content-text');
+  const $secretImages = document.getElementById('secret-images');
+  const $secretVideos = document.getElementById('secret-videos');
+  const $stateErrMsg  = document.getElementById('state-error-msg');
 
   // ── Parse URL param ──────────────────────────
   const params = new URLSearchParams(window.location.search);
@@ -293,10 +351,17 @@
     return;
   }
 
-  // ── Show locked UI ───────────────────────────
-  $loading.style.display = 'none';
-  $locked.style.display = 'block';
+  // ── 渲染公开区（无加密环节，直接可见） ───────
+  if (entry.photo) {
+    $photo.src = entry.photo;
+    $photoWrap.style.display = 'block';
+  }
+  $description.textContent = entry.description || '';
+  $toLabel.textContent = `To ${entry.to}`;
   $question.textContent = entry.question;
+
+  $loading.style.display = 'none';
+  $public.classList.add('active');
   $answer.focus();
 
   // ── Helper: base64 → Uint8Array ──────────────
@@ -367,15 +432,14 @@
         ciphertext
       );
 
-      // Step 4: Parse and render
+      // Step 4: Parse and render secret content
       const decoder = new TextDecoder();
       const json = JSON.parse(decoder.decode(plaintext));
 
-      showUnlocked(json);
+      showSecret(json);
 
     } catch (err) {
       // AES-GCM auth tag verification fails → wrong answer
-      // Other errors (JSON parse etc) also caught here
       console.error('Decrypt failed:', err.name, err.message);
       showError('答案不正确，请再试一次');
       $answer.classList.add('shake');
@@ -387,77 +451,49 @@
     }
   }
 
-  // ── Blob URL 管理 ────────────────────────────
-  // 页面关闭时自动回收，也可主动调用 cleanupBlobUrls()
-  const blobUrls = [];
+  // ── Render secret content ────────────────────
+  // 媒体为 public/ 下的静态文件直链（图片 <img> / 视频 <video>）
+  function showSecret(payload) {
+    $public.classList.remove('active');
 
-  function cleanupBlobUrls() {
-    for (const url of blobUrls) {
-      URL.revokeObjectURL(url);
+    if (payload.text) {
+      $content.textContent = payload.text;
     }
-    blobUrls.length = 0;
-  }
 
-  // 监听页面卸载，确保 Blob URL 被回收
-  window.addEventListener('beforeunload', cleanupBlobUrls);
-  window.addEventListener('pagehide', cleanupBlobUrls);
+    if (payload.images && payload.images.length > 0) {
+      $secretImages.innerHTML = '';
+      for (const src of payload.images) {
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = '照片';
+        img.loading = 'lazy';
+        $secretImages.appendChild(img);
+      }
+    }
+
+    if (payload.videos && payload.videos.length > 0) {
+      $secretVideos.innerHTML = '';
+      for (const src of payload.videos) {
+        const video = document.createElement('video');
+        video.src = src;
+        video.controls = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        $secretVideos.appendChild(video);
+      }
+    }
+
+    $secret.classList.add('active');
+  }
 
   // ── UI helpers ───────────────────────────────
   function showError(msg) {
     $errorMsg.textContent = msg;
   }
 
-  function showUnlocked(payload) {
-    $locked.style.display = 'none';
-    $unlocked.classList.add('active');
-
-    // Render text
-    if (payload.text) {
-      $content.textContent = payload.text;
-    }
-
-    // Render photos from Base64 via Blob URL
-    // Blob URL 只在当前页面会话内存中存在，关闭页面即失效
-    // 无法被书签保存、无法通过 URL 直接访问
-    if (payload.photos && payload.photos.length > 0) {
-      $photos.innerHTML = '';
-      for (const photo of payload.photos) {
-        // 兼容旧格式：如果是字符串则当作普通 URL
-        if (typeof photo === 'string') {
-          const img = document.createElement('img');
-          img.src = photo;
-          img.alt = '照片';
-          img.loading = 'lazy';
-          $photos.appendChild(img);
-          continue;
-        }
-
-        // 新格式：{ name, type, data } → Blob URL
-        try {
-          const binaryStr = atob(photo.data);
-          const bytes = new Uint8Array(binaryStr.length);
-          for (let i = 0; i < binaryStr.length; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
-          }
-          const blob = new Blob([bytes], { type: photo.type });
-          const blobUrl = URL.createObjectURL(blob);
-          blobUrls.push(blobUrl);
-
-          const img = document.createElement('img');
-          img.src = blobUrl;
-          img.alt = photo.name || '照片';
-          img.loading = 'lazy';
-          $photos.appendChild(img);
-        } catch (e) {
-          console.error('照片解码失败:', photo.name, e);
-        }
-      }
-    }
-  }
-
   function showStateError(msg) {
     $loading.style.display = 'none';
-    $locked.style.display = 'none';
+    $public.classList.remove('active');
     $stateErr.classList.add('active');
     $stateErrMsg.textContent = msg;
   }

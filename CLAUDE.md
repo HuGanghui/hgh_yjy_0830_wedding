@@ -66,7 +66,7 @@ cd public && python3 -m http.server 8888
 ```
 
 **关键点：**
-- 媒体由 `build.js` 的 `copyMedia()` 拷贝到 `public/media/<id>/`：公开照片放 `photo/`（保留原文件名），secret 图片/视频放 `secret/`（文件名随机：`crypto.randomBytes(16).toString('hex')` + 扩展名）。data.json 只存路径。
+- 媒体由 `build.js` 的 `copyMedia()` 拷贝到 `public/media/<id>/`：公开照片放 `photo/`（保留原文件名），secret 图片/视频放 `secret/`（文件名随机：`crypto.randomBytes(16).toString('hex')` + 扩展名）。data.json 只存路径。**每次构建会先清空整个 `public/media/`**，保证产物与 data.json 严格一致、不残留旧文件。
 - secret 的 `text` 加密进 `data` 字段；公开字段（`to`/`question`/`description`/`photo`）为明文。
 - **secret 媒体是 `public/` 下可直链的静态文件**——路径随机只是防枚举的缓解，不是真正的机密性（用户已接受该取舍）。图片/视频加载用 `<img>` / `<video controls preload="metadata">` 直链，**已无 Blob URL 逻辑**。
 - 解密入口在 `public/index.html` 的 IIFE 脚本：加载后先渲染公开区 → `base64ToBytes()` → PBKDF2 deriveKey → `crypto.subtle.decrypt` → JSON.parse → 渲染 `text/images/videos`。
