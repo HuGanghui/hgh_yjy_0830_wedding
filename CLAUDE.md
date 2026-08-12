@@ -26,9 +26,11 @@ npm run build            # 构建：读取 config.json → 生成 public/data.js
 
 本地验证：
 ```bash
-# 浏览器端验证（模拟 GitHub Pages）
-cd public && python3 -m http.server 8888
+# 浏览器端验证（模拟 GitHub Pages）——务必用支持 Range 的服务器，否则视频无法拖动进度条
+node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8888，目录 public
 # 访问 http://localhost:8888/?id=<entryId>
+# ⚠️ Python 的 http.server 不支持 Range，视频会「只有声音、画面不动、拉不动进度条」。
+#    部署到 GitHub Pages 无此问题（GitHub 支持 Range）。
 
 # Node 端到端加解密验证（一行的 node -e，见 README「测试一」）
 # 用 config.json 中的真实 answer 验证解密成功、错误答案被拒绝

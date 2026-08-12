@@ -2,6 +2,12 @@ node_modules/
 qrcodes/
 config.json
 
+# 大的源媒体（不提交，构建时引用）
+media-source/
+
+# 构建出的视频（体积大，不入库）
+public/media/**/secret/*.mp4
+
 # macOS
 .DS_Store
 

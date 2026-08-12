@@ -77,6 +77,7 @@ qr-unlock/
 ├── README.md             # 本文档
 ├── package.json           # npm 项目配置
 ├── build.js               # 构建脚本（加密额外内容 + 拷贝媒体 + 生成 QR 码）
+├── server.js              # 本地预览服务器（零依赖，支持 Range/206，视频可拖进度条）
 ├── config.json            # 条目配置（你编辑，已 gitignore）
 ├── config.example.json    # 示例配置（可提交）
 ├── assets/                # 源媒体文件（照片/图片/视频，config 引用，可提交）
@@ -291,10 +292,12 @@ try {
 用本地 HTTP 服务器模拟 GitHub Pages 环境，在浏览器中打开解锁页面。
 
 ```bash
-# 在 public/ 目录启动本地服务器
-cd public
-python3 -m http.server 8888
+# 在项目根目录启动本地服务器（零依赖，支持 HTTP Range，视频才能拖进度条）
+node server.js
+# 默认端口 8888，服务 public/ 目录
 ```
+
+> ⚠️ **不要用 `python3 -m http.server` 预览视频**：它不支持 HTTP Range 请求，视频会「只有声音、画面不动、拉不动进度条」。`server.js` 已实现 Range/206，`node server.js` 直接可用；部署到 GitHub Pages 无此问题（GitHub 支持 Range）。
 
 然后浏览器访问：
 
