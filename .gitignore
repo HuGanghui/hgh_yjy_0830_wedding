@@ -1,3 +1,9 @@
 node_modules/
 qrcodes/
 config.json
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
