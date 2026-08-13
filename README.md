@@ -82,7 +82,7 @@ qr-unlock/
 ├── server.js              # 本地预览服务器（零依赖，支持 Range/206，视频可拖进度条）
 ├── config.json            # 条目配置（你编辑，已 gitignore）
 ├── config.example.json    # 示例配置（可提交）
-├── assets/                # 源媒体文件（照片/图片/视频，config 引用，可提交）
+├── assets/                # 源媒体文件（照片/图片/视频，config 引用；已 gitignore、仅本地，务必自行备份原图）
 ├── .gitignore
 ├── qrcodes/               # 生成的 QR 码 PNG（已 gitignore）
 └── public/                # 部署到 GitHub Pages
@@ -162,7 +162,8 @@ npm run build
 
 **一次性设置：**
 
-1. 在 GitHub 新建仓库，把整个项目推上去（`config.json` / `qrcodes/` / `media-source/` 已被 `.gitignore` 排除，不会上传；答案即密钥始终不入库）：
+1. 在 GitHub 新建仓库，把整个项目推上去（`config.json` / `qrcodes/` / `media-source/` / `assets/` 已被 `.gitignore` 排除，不会上传；答案即密钥始终不入库，源媒体原图只在本地）：
+   > ⚠️ `assets/` 不进仓库后，原图仅存于你的本地，**请务必把 `assets/` 备份到 U 盘 / 网盘等**，以防误删或换机丢失。
    ```bash
    git remote add origin https://github.com/你的用户名/仓库名.git
    git push -u origin main

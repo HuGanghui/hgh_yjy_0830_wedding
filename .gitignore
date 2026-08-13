@@ -5,6 +5,9 @@ config.json
 # 大的源媒体（不提交，构建时引用）
 media-source/
 
+# 源媒体文件（照片/secret 原图，仅本地保留、务必自行备份；构建产物在 public/ 照常提交）
+assets/
+
 # macOS
 .DS_Store
 
