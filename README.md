@@ -158,17 +158,28 @@ npm run build
 
 ### 4. 部署到 GitHub Pages
 
-```bash
-# 将 public/ 目录的内容推送到 GitHub 仓库
-cd public
-git init
-git add .
-git commit -m "Deploy"
-git remote add origin https://github.com/你的用户名/仓库名.git
-git push -u origin main
-```
+整个项目用一个 git 仓库（外层），GitHub Actions 自动把 `public/` 部署上线。**无需在 `public/` 内再建 git。**
 
-然后在 GitHub 仓库 Settings → Pages 中，将 Source 设为 `main` 分支。
+**一次性设置：**
+
+1. 在 GitHub 新建仓库，把整个项目推上去（`config.json` / `qrcodes/` / `media-source/` 已被 `.gitignore` 排除，不会上传；答案即密钥始终不入库）：
+   ```bash
+   git remote add origin https://github.com/你的用户名/仓库名.git
+   git push -u origin main
+   ```
+2. 仓库 Settings → Pages → Source 选择 **GitHub Actions**。
+
+仓库里已包含 `.github/workflows/deploy.yml`：每次 push 到 `main` 就自动把**已提交的 `public/`** 部署到 Pages（不执行 `npm run build`——config.json 含答案不入库，CI 里没有它无法重建，所以约定「本地构建 → 提交产物 → push → 自动上线」）。
+
+**日常更新流程：**
+
+```bash
+# 改内容：编辑 config.json（或新增 assets/ 源文件）
+npm run build          # 重新生成 public/data.json + public/media/ + qrcodes/
+git add .              # config.json/qrcodes/ 自动被忽略，只会上传安全内容
+git commit -m "更新内容"
+git push               # push 后 Actions 自动部署，几分钟后线上更新
+```
 
 ### 5. 分发 QR 码
 

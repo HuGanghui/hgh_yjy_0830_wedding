@@ -87,4 +87,4 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 
 ## 部署
 
-`public/` 是纯静态目录，部署到 GitHub Pages（Settings → Pages → Source: main 分支）即可，也可换任何静态托管。
+`public/` 是纯静态目录，整个项目用一个 git 仓库（外层），由 `.github/workflows/deploy.yml` 在 push 到 main 时自动把**已提交的 public/** 部署到 GitHub Pages（Settings → Pages → Source: GitHub Actions）。CI **不执行** `npm run build`（config.json 含答案、不入库，CI 无法重建）——约定「本地 `npm run build` → 提交产物 → push → 自动上线」。也可换任何静态托管（Vercel/Netlify/COS 等）。
