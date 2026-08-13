@@ -357,7 +357,9 @@
     $photoWrap.style.display = 'block';
   }
   $description.textContent = entry.description || '';
-  $toLabel.textContent = `To ${entry.to}`;
+  // to 可选：无收件人的条目不显示「To 某人」标签
+  $toLabel.textContent = entry.to ? `To ${entry.to}` : '';
+  $toLabel.hidden = !entry.to;
   $question.textContent = entry.question;
 
   $loading.style.display = 'none';

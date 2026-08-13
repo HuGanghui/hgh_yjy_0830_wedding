@@ -54,9 +54,9 @@ async function main() {
   for (const entry of config.entries) {
     const { id, to, question, answer, description, photo, secret } = entry;
 
-    // 校验必填字段
-    if (!id || !to || !question || !answer || !description) {
-      errors.push(`[${id || '???'}] 缺少必填字段 (id/to/question/answer/description)`);
+    // 校验必填字段（to 可选：无 To 收件人的照片可省略）
+    if (!id || !question || !answer || !description) {
+      errors.push(`[${id || '???'}] 缺少必填字段 (id/question/answer/description)（to 可选）`);
       continue;
     }
     if (output[id]) {
@@ -127,14 +127,15 @@ async function main() {
     // 拼接格式：iv(12字节) + 密文 + authTag(16字节)
     const combined = Buffer.concat([iv, encrypted, authTag]);
 
-    output[id] = {
-      to,
+    const outEntry = {
       question,
       description,
       photo: photoUrl,
       salt: salt.toString('base64'),
       data: combined.toString('base64')
     };
+    if (to) outEntry.to = to; // to 可选：无收件人的照片省略该字段
+    output[id] = outEntry;
 
     // ── 生成 QR 码 ─────────────────────────────
     const url = `${BASE_URL}?id=${encodeURIComponent(id)}`;

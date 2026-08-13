@@ -132,7 +132,7 @@ cp config.example.json config.json
 |------|------|------|
 | `baseUrl` | 是 | GitHub Pages 的访问地址，末尾不加 `/` |
 | `entries[].id` | 是 | 唯一标识，英文/数字/短横线，会成为 URL 的 `?id=` 参数 |
-| `entries[].to` | 是 | 收件人称呼，页面显示为「To 阿杰」 |
+| `entries[].to` | 否 | 收件人称呼，页面显示为「To 阿杰」。无特定收件人的照片可省略此字段，页面不显示 To 标签 |
 | `entries[].question` | 是 | 扫码后显示的问题 |
 | `entries[].answer` | 是 | 正确答案，也是解密密钥。不会被存储到任何地方 |
 | `entries[].photo` | 否 | 公开照片路径，扫码直接可见，复制到 `public/media/<id>/photo/` |
@@ -209,7 +209,7 @@ git push -u origin main
 }
 ```
 
-`to` / `question` / `description` / `photo` 为公开字段，扫码即可见。`data` 中加密的是额外内容：`text` 为文字，`images` / `videos` 为构建时拷贝到 `public/media/<id>/secret/` 的静态文件路径（随机文件名）。浏览器答对后解密得到这些路径，用 `<img>` / `<video>` 直接加载渲染。
+`to` / `question` / `description` / `photo` 为公开字段，扫码即可见（`to` 可选：无特定收件人的条目省略该字段，页面不显示 To 标签）。`data` 中加密的是额外内容：`text` 为文字，`images` / `videos` 为构建时拷贝到 `public/media/<id>/secret/` 的静态文件路径（随机文件名）。浏览器答对后解密得到这些路径，用 `<img>` / `<video>` 直接加载渲染。
 
 ## 本地验证测试
 
