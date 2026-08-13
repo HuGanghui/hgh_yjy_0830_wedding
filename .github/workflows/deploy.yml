@@ -30,6 +30,24 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      # 大小写校验：GitHub Pages 是区分大小写的服务器，而本地 macOS 的 git
+      # 默认 core.ignorecase=true，可能把小写文件名按大写提交（曾导致照片 404）。
+      # 这里在 Linux runner 上核对 data.json 每个 photo 路径都能按原样找到。
+      - name: Verify media paths are case-exact
+        run: node -e "
+          const fs=require('fs'),path=require('path');
+          const d=JSON.parse(fs.readFileSync('public/data.json','utf-8'));
+          const bad=[];
+          for(const [id,e] of Object.entries(d)){
+            if(!e.photo) continue;
+            const p=path.join('public',e.photo);
+            const dir=path.dirname(p), base=path.basename(p);
+            if(!fs.existsSync(dir) || !fs.readdirSync(dir).includes(base)) bad.push(id+': '+e.photo);
+          }
+          if(bad.length){ console.error('❌ 照片路径与文件大小写不一致: '+bad.join('; ')); process.exit(1); }
+          console.log('✅ '+Object.keys(d).length+' 个条目的照片路径全部与文件一致');
+          "
+
       - name: Upload public/
         uses: actions/upload-pages-artifact@v3
         with:
