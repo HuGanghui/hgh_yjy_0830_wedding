@@ -1,0 +1,23 @@
+#!/bin/sh
+# 提交前自动自检：构建产物一致性 + 加解密链路 + 媒体路径大小写。
+# 仅当暂存区涉及 public/（构建产物）、scripts/、.githooks/ 时才运行；
+# 纯文档/代码类提交（不涉及产物）直接放行，避免每次 commit 都付几秒 PBKDF2 的代价。
+#
+# 让 git 使用本目录的钩子（一次性设置，新环境需重跑）：
+#   git config core.hooksPath .githooks
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+should_run=0
+for f in $(git diff --cached --name-only); do
+  case "$f" in
+    public/*|scripts/*|.githooks/*) should_run=1 ;;
+  esac
+done
+
+if [ "$should_run" = "0" ]; then
+  exit 0
+fi
+
+echo "🔍 pre-commit: 运行构建产物自检..."
+node scripts/verify.js

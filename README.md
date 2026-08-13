@@ -243,6 +243,21 @@ git push               # push 后 Actions 自动部署，几分钟后线上更�
 
 部署前建议在本地完成两个维度的验证，确保加解密逻辑和页面功能正常。
 
+### 提交前自动自检（pre-commit 钩子）
+
+仓库启用 pre-commit 钩子：暂存区涉及 `public/`（构建产物）等时，`git commit` 自动运行 `node scripts/verify.js`，任一检查失败会**阻止提交**：
+
+1. **条目一致性**：`config.json` 与 `public/data.json` 相互对得上（防「改了配置忘了重新构建」）
+2. **加解密链路**：用 `config.json` 的**真实答案**解密每个有收件人条目的密文；错误答案应被 GCM 认证拒绝
+3. **媒体路径**：`photo` 及答对后可见的 `images`/`videos` 在磁盘上大小写精确存在，且与 git 实际跟踪名一致（拦 macOS `core.ignorecase=true` 把文件名大小写搞反、上线 404 的坑）
+
+纯文档/代码类提交（不涉及 `public/`/`scripts/`/`.githooks/`）会自动跳过，不付出额外耗时。也可手动运行 `npm run verify`（与钩子内容相同）。
+
+> ⚠️ 钩子文件 `.githooks/pre-commit` 已提交入库，但让 git 使用它需一次性设置——**新克隆/新环境都要执行一次**（该配置不随克隆走）：
+> ```bash
+> git config core.hooksPath .githooks
+> ```
+
 ### 测试一：Node.js 端到端加解密验证
 
 验证构建脚本生成的密文能否被正确解密，以及错误答案是否被拒绝。

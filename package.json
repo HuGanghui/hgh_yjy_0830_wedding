@@ -4,7 +4,8 @@
   "description": "QR 码加密解锁系统 — 扫码回答问题，答对才能看到内容",
   "private": true,
   "scripts": {
-    "build": "node build.js"
+    "build": "node build.js",
+    "verify": "node scripts/verify.js"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

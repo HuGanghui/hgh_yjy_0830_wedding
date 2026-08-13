@@ -15,6 +15,7 @@ QR 码加密解锁系统：每个条目生成一个 QR 码，指向 `public/inde
 - 任何修改、新增、删除文件，完成一个逻辑单元后立即 `git add` + `git commit`，不允许改动长期停留在工作区。
 - 提交前先 `git status` 和 `git diff`，确认只包含预期改动，绝不误提交 `config.json`（含答案/密钥）和 `qrcodes/`（QR 码）——见下方「Git 约定」。
 - 提交信息使用中文、动词开头的描述性写法（参考现有 commit 风格），例如 `feat: 新增视频内容支持`、`fix: 修复答案含中文空格时解密失败`。
+- **提交前自动自检**：仓库启用 pre-commit 钩子（`.githooks/pre-commit`，已提交入库）——暂存区涉及 `public/`（构建产物）/ `scripts/` / `.githooks/` 时，`git commit` 自动运行 `node scripts/verify.js`（用 config.json 真实答案解密校验 + 媒体路径大小写校验），任一失败**阻止提交**；纯文档提交自动跳过。⚠️ 该钩子靠 `git config core.hooksPath .githooks` 生效（配置不随克隆走），**新环境必须先执行这句**，否则钩子不生效。
 
 ## 常用命令
 
@@ -22,6 +23,8 @@ QR 码加密解锁系统：每个条目生成一个 QR 码，指向 `public/inde
 npm install              # 安装依赖（qrcode + sharp；sharp 用于构建时照片缩放压缩）
 cp config.example.json config.json   # 首次创建配置
 npm run build            # 构建：读取 config.json → 生成 public/data.json + qrcodes/*.png
+npm run verify           # 提交前自检（pre-commit 自动跑）：真实答案解密每个条目 + 媒体路径大小写校验
+git config core.hooksPath .githooks  # 一次性设置：启用 pre-commit 钩子（新环境必跑）
 ```
 
 本地验证：
