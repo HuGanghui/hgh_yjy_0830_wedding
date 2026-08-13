@@ -1,0 +1,40 @@
+name: Deploy to GitHub Pages
+
+# 每当推送到 main 分支时，把已提交的 public/ 目录部署到 GitHub Pages。
+# 注意：不在 CI 里执行 `npm run build` —— config.json 含答案（密钥）、按设计不入库，
+#       CI 里没有它无法重建。所以约定「本地 npm run build → 提交产物 → push → 自动上线」。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload public/
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
