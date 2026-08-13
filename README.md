@@ -80,6 +80,10 @@ qr-unlock/
 ├── package.json           # npm 项目配置
 ├── build.js               # 构建脚本（加密额外内容 + 拷贝媒体 + 生成 QR 码）
 ├── server.js              # 本地预览服务器（零依赖，支持 Range/206，视频可拖进度条）
+├── scripts/
+│   └── verify.js          # 构建产物自检（pre-commit 调用；条目一致性 + 解密 + 媒体路径 + QR + 浏览器流程）
+├── .githooks/
+│   └── pre-commit         # 提交前钩子（需 git config core.hooksPath .githooks 启用）
 ├── config.json            # 条目配置（你编辑，已 gitignore）
 ├── config.example.json    # 示例配置（可提交）
 ├── assets/                # 源媒体文件（照片/图片/视频，config 引用；已 gitignore、仅本地，务必自行备份原图）
@@ -197,6 +201,7 @@ git push               # push 后 Actions 自动部署，几分钟后线上更�
 | 图片优化 | `sharp` (npm) | 构建时照片缩放至 1600px + 压成 JPEG，体积减 90%+（照片加载提速的关键） |
 | QR 码生成 | `qrcode` (npm) | 500px PNG，适合手机扫描 |
 | 前端页面 | 原生 HTML/CSS/JS | 单文件约 250 行，移动端优先 |
+| 测试（dev） | `jsdom` + `jsqr` (npm) | pre-commit 自检：jsdom 跑真实 index.html 解锁流程，jsqr 解码 QR 内容 |
 | 托管 | GitHub Pages | 免费，全球 CDN |
 
 ### 数据格式
@@ -250,6 +255,8 @@ git push               # push 后 Actions 自动部署，几分钟后线上更�
 1. **条目一致性**：`config.json` 与 `public/data.json` 相互对得上（防「改了配置忘了重新构建」）
 2. **加解密链路**：用 `config.json` 的**真实答案**解密每个有收件人条目的密文；错误答案应被 GCM 认证拒绝
 3. **媒体路径**：`photo` 及答对后可见的 `images`/`videos` 在磁盘上大小写精确存在，且与 git 实际跟踪名一致（拦 macOS `core.ignorecase=true` 把文件名大小写搞反、上线 404 的坑）
+4. **QR 码**（测试三）：每个 `qrcodes/<id>.png` 存在、是有效 500×500 PNG、非空；并用 `jsqr` 解码，断言编码内容 == `baseUrl?id=<id>`
+5. **浏览器流程**（测试二）：用 `jsdom` 加载真实 `public/index.html`，模拟输入答案点击解锁——公开区直接渲染、错误答案提示「答案不正确」、正确答案解锁出 secret 区（能抓住 `index.html` 自身的解密参数/流程被改坏——Node 端解密查不出这个）
 
 纯文档/代码类提交（不涉及 `public/`/`scripts/`/`.githooks/`）会自动跳过，不付出额外耗时。也可手动运行 `npm run verify`（与钩子内容相同）。
 
