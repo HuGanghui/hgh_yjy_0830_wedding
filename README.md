@@ -148,7 +148,7 @@ npm run build
 ```
 
 构建后：
-- `qrcodes/` 目录下生成每个条目的 QR 码 PNG
+- `qrcodes/` 目录下生成每个条目的 QR 码 PNG（构建前清空，保证与 config 一致、无残留）
 - `public/data.json` 写入数据（公开字段明文 + 额外内容加密）
 - `public/media/<id>/` 拷贝媒体：公开照片保留原文件名，secret 图片/视频使用随机文件名
 

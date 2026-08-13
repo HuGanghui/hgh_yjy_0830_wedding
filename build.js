@@ -42,12 +42,11 @@ async function main() {
     process.exit(1);
   }
 
-  // 确保输出目录存在
+  // 每次构建前清空 qrcodes 与 media 目录，保证构建产物与 config 严格一致、不残留孤儿文件
+  fs.rmSync('qrcodes', { recursive: true, force: true });
+  fs.rmSync('public/media', { recursive: true, force: true });
   fs.mkdirSync('qrcodes', { recursive: true });
   fs.mkdirSync('public', { recursive: true });
-
-  // 每次构建前清空 media 目录，保证构建产物与 data.json 严格一致、不残留孤儿文件
-  fs.rmSync('public/media', { recursive: true, force: true });
 
   const output = {};
   const errors = [];
