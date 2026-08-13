@@ -2,33 +2,69 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const QRCode = require('qrcode');
+const sharp = require('sharp');
 
-// ── 生成不可猜测的随机文件名（secret 媒体用） ──
-function randomFileName(originalPath) {
-  const ext = path.extname(originalPath);
-  return crypto.randomBytes(16).toString('hex') + ext;
+// ── 图片优化参数 ─────────────────────────────────────
+// 页面里照片最宽约 440px（max-width 440px 卡片），1600px 已覆盖 3x 视网膜屏，绰绰有余。
+// 相机原图动辄 4000-6000px、5-11MB，直接上线手机要下载很久 —— 这里统一缩放+压缩。
+const MAX_PHOTO_WIDTH = 1600;  // 只缩小不放大
+const JPEG_QUALITY = 82;       // 肉眼几乎无损，体积减 95%+
+const RASTER_EXTS = new Set([
+  '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.bmp', '.tif', '.tiff', '.avif'
+]);
+
+// ── 生成不可猜测的随机文件名（secret 媒体用，不含扩展名） ──
+function randomFileName() {
+  return crypto.randomBytes(16).toString('hex');
 }
 
 // ── 拷贝单个媒体文件到 public/media/<id>/<folder> ──
 // folder: 'photo'（公开，保留原文件名）| 'secret'（随机文件名）
-function copyMedia(srcPath, id, folder) {
+// 位图照片一律缩放+重压缩输出 .jpg（带透明通道的压平到卡片白底）；视频/SVG 原样拷贝。
+// 优化失败自动回退为原样拷贝，保证构建永不因个别图片中断。
+async function copyMedia(srcPath, id, folder) {
   const absSrc = path.resolve(srcPath);
   if (!fs.existsSync(absSrc)) {
     throw new Error(`文件不存在: ${srcPath}`);
   }
 
-  const filename = folder === 'photo'
-    ? path.basename(srcPath)
-    : randomFileName(srcPath);
-
+  const ext = path.extname(srcPath).toLowerCase();
   const outDir = path.join('public', 'media', id, folder);
   fs.mkdirSync(outDir, { recursive: true });
 
-  const dest = path.join(outDir, filename);
-  fs.copyFileSync(absSrc, dest);
+  let dest;
+  if (RASTER_EXTS.has(ext)) {
+    // 位图：缩放 + 重压缩
+    const baseName = folder === 'photo'
+      ? path.basename(srcPath, path.extname(srcPath))
+      : randomFileName();
+    try {
+      const meta = await sharp(absSrc, { failOn: 'none' }).metadata();
+      const hasAlpha = meta.channels === 4;
+      dest = path.join(outDir, `${baseName}.jpg`);
+      let img = sharp(absSrc, { failOn: 'none' })
+        .rotate()  // 按 EXIF 方向摆正（手机照片常见）
+        .resize({ width: MAX_PHOTO_WIDTH, withoutEnlargement: true });
+      // 带 alpha 的照片多为导出残留（实测半透明像素≈254，压平前后视觉无差异），压平到卡片白底再压 JPEG
+      if (hasAlpha) img = img.flatten({ background: '#ffffff' });
+      const buf = await img.jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
+      fs.writeFileSync(dest, buf);
+    } catch (err) {
+      dest = path.join(outDir, path.basename(srcPath));
+      fs.copyFileSync(absSrc, dest);
+      console.warn(`  ⚠️  [${id}] 图片优化失败，已原样拷贝: ${err.message}`);
+    }
+  } else {
+    // 视频 / SVG 等：原样拷贝
+    const filename = folder === 'photo'
+      ? path.basename(srcPath)
+      : randomFileName() + ext;
+    dest = path.join(outDir, filename);
+    fs.copyFileSync(absSrc, dest);
+  }
 
   const sizeKB = (fs.statSync(dest).size / 1024).toFixed(1);
-  const url = path.posix.join('media', id, folder, filename);
+  const url = path.posix.join('media', id, folder, path.basename(dest));
   return { url, sizeKB };
 }
 
@@ -70,7 +106,7 @@ async function main() {
     let photoUrl = null;
     if (photo) {
       try {
-        const r = copyMedia(photo, id, 'photo');
+        const r = await copyMedia(photo, id, 'photo');
         photoUrl = r.url;
         console.log(`  🖼️  [${id}] 公开照片: ${r.url} (${r.sizeKB} KB)`);
       } catch (err) {
@@ -98,7 +134,7 @@ async function main() {
       const videos = [];
       for (const src of (secret.images || [])) {
         try {
-          const r = copyMedia(src, id, 'secret');
+          const r = await copyMedia(src, id, 'secret');
           images.push(r.url);
           console.log(`  🖼️  [${id}] secret 图片: ${r.url} (${r.sizeKB} KB)`);
         } catch (err) {
@@ -107,7 +143,7 @@ async function main() {
       }
       for (const src of (secret.videos || [])) {
         try {
-          const r = copyMedia(src, id, 'secret');
+          const r = await copyMedia(src, id, 'secret');
           videos.push(r.url);
           console.log(`  🎬 [${id}] secret 视频: ${r.url} (${r.sizeKB} KB)`);
         } catch (err) {

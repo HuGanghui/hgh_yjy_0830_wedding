@@ -19,7 +19,7 @@ QR 码加密解锁系统：每个条目生成一个 QR 码，指向 `public/inde
 ## 常用命令
 
 ```bash
-npm install              # 安装依赖（仅 qrcode）
+npm install              # 安装依赖（qrcode + sharp；sharp 用于构建时照片缩放压缩）
 cp config.example.json config.json   # 首次创建配置
 npm run build            # 构建：读取 config.json → 生成 public/data.json + qrcodes/*.png
 ```
@@ -70,6 +70,7 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 
 **关键点：**
 - 媒体由 `build.js` 的 `copyMedia()` 拷贝到 `public/media/<id>/`：公开照片放 `photo/`（保留原文件名），secret 图片/视频放 `secret/`（文件名随机：`crypto.randomBytes(16).toString('hex')` + 扩展名）。data.json 只存路径。**每次构建会先清空整个 `public/media/` 和 `qrcodes/`**，保证产物与 config 严格一致、不残留旧文件（避免过期 QR 码被误发）。
+- **照片自动优化**：位图照片（jpg/jpeg/png/webp/heic 等）构建时经 `sharp` 缩放至 1600px 宽并重压缩为 JPEG（质量 82），带透明通道的压平到白底；视频与 SVG 原样拷贝；优化失败自动回退原样拷贝。相机原图动辄 5-11MB，优化后通常几十~几百 KB（42 张共约 10MB）。源文件在 `assets/` 不受影响。
 - secret 的 `text` 加密进 `data` 字段；公开字段（`to`/`question`/`description`/`photo`）为明文。`to` **可选**：无特定收件人的照片可省略，页面不显示「To 某人」标签（`build.js` 与 `index.html` 均已适配）。
 - **有无 `to` 决定是否为解锁条目**：有 `to` → 必有 `question`/`answer`/`secret`，额外内容加密（`build.js` 校验并加密）；无 `to` → 仅照片+描述，`question`/`answer`/`secret` 被忽略并告警，不产出 `salt`/`data`。
 - **secret 媒体是 `public/` 下可直链的静态文件**——路径随机只是防枚举的缓解，不是真正的机密性（用户已接受该取舍）。图片/视频加载用 `<img>` / `<video controls preload="metadata">` 直链，**已无 Blob URL 逻辑**。

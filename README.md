@@ -154,7 +154,7 @@ npm run build
 构建后：
 - `qrcodes/` 目录下生成每个条目的 QR 码 PNG（构建前清空，保证与 config 一致、无残留）
 - `public/data.json` 写入数据（公开字段明文 + 额外内容加密）
-- `public/media/<id>/` 拷贝媒体：公开照片保留原文件名，secret 图片/视频使用随机文件名
+- `public/media/<id>/` 拷贝媒体：公开照片保留原文件名（自动缩放压缩为 1600px JPEG，扩展名统一为 `.jpg`，带透明通道的压平到白底），secret 图片/视频使用随机文件名
 
 ### 4. 部署到 GitHub Pages
 
@@ -193,6 +193,7 @@ git push               # push 后 Actions 自动部署，几分钟后线上更�
 |---|---|---|
 | 加密（构建时） | Node.js `crypto` | AES-256-GCM + PBKDF2-SHA256 |
 | 解密（浏览器） | Web Crypto API (`crypto.subtle`) | 浏览器原生，零额外依赖 |
+| 图片优化 | `sharp` (npm) | 构建时照片缩放至 1600px + 压成 JPEG，体积减 90%+（照片加载提速的关键） |
 | QR 码生成 | `qrcode` (npm) | 500px PNG，适合手机扫描 |
 | 前端页面 | 原生 HTML/CSS/JS | 单文件约 250 行，移动端优先 |
 | 托管 | GitHub Pages | 免费，全球 CDN |
