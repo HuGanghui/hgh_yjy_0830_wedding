@@ -13,6 +13,11 @@
         "images": ["assets/secret-1.jpg", "assets/secret-2.jpg"],
         "videos": ["assets/secret-video.mp4"]
       }
+    },
+    {
+      "id": "no-recipient-photo",
+      "photo": "assets/photo.jpg",
+      "description": "这张照片没有特定收件人，扫码直接看到照片和描述即可，无需答题。省略 to/question/answer/secret。"
     }
   ]
 }

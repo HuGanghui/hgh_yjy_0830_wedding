@@ -54,21 +54,17 @@ async function main() {
   for (const entry of config.entries) {
     const { id, to, question, answer, description, photo, secret } = entry;
 
-    // 校验必填字段（to 可选：无 To 收件人的照片可省略）
-    if (!id || !question || !answer || !description) {
-      errors.push(`[${id || '???'}] 缺少必填字段 (id/question/answer/description)（to 可选）`);
+    // 校验必填字段（to 可选；无 to 的条目只需 id/description）
+    if (!id || !description) {
+      errors.push(`[${id || '???'}] 缺少必填字段 (id/description)（to 可选）`);
       continue;
     }
     if (output[id]) {
       errors.push(`[${id}] ID 重复，将覆盖之前的条目`);
     }
-    const hasSecretMedia =
-      (secret && secret.images && secret.images.length > 0) ||
-      (secret && secret.videos && secret.videos.length > 0);
-    if (!secret || (!secret.text && !hasSecretMedia)) {
-      errors.push(`[${id}] secret 至少包含 text/images/videos 之一`);
-      continue;
-    }
+
+    // 有 to（收件人）才有解锁环节；无 to 的条目仅展示照片+描述
+    const isGated = !!to;
 
     // ── 公开照片（直接可见，保留原文件名） ──
     let photoUrl = null;
@@ -82,59 +78,80 @@ async function main() {
       }
     }
 
-    // ── secret 媒体（随机文件名，答对后可见） ──
-    const images = [];
-    const videos = [];
-    for (const src of (secret.images || [])) {
-      try {
-        const r = copyMedia(src, id, 'secret');
-        images.push(r.url);
-        console.log(`  🖼️  [${id}] secret 图片: ${r.url} (${r.sizeKB} KB)`);
-      } catch (err) {
-        errors.push(`[${id}] secret 图片 ${src}: ${err.message}`);
+    let outEntry;
+    if (isGated) {
+      // ── 有收件人：需要问题/答案，额外内容加密 ──
+      if (!question || !answer) {
+        errors.push(`[${id}] 有收件人 (to=${to})，缺少 question/answer`);
+        continue;
       }
-    }
-    for (const src of (secret.videos || [])) {
-      try {
-        const r = copyMedia(src, id, 'secret');
-        videos.push(r.url);
-        console.log(`  🎬 [${id}] secret 视频: ${r.url} (${r.sizeKB} KB)`);
-      } catch (err) {
-        errors.push(`[${id}] secret 视频 ${src}: ${err.message}`);
+      const hasSecretMedia =
+        (secret && secret.images && secret.images.length > 0) ||
+        (secret && secret.videos && secret.videos.length > 0);
+      if (!secret || (!secret.text && !hasSecretMedia)) {
+        errors.push(`[${id}] secret 至少包含 text/images/videos 之一`);
+        continue;
       }
+
+      // secret 媒体（随机文件名，答对后可见）
+      const images = [];
+      const videos = [];
+      for (const src of (secret.images || [])) {
+        try {
+          const r = copyMedia(src, id, 'secret');
+          images.push(r.url);
+          console.log(`  🖼️  [${id}] secret 图片: ${r.url} (${r.sizeKB} KB)`);
+        } catch (err) {
+          errors.push(`[${id}] secret 图片 ${src}: ${err.message}`);
+        }
+      }
+      for (const src of (secret.videos || [])) {
+        try {
+          const r = copyMedia(src, id, 'secret');
+          videos.push(r.url);
+          console.log(`  🎬 [${id}] secret 视频: ${r.url} (${r.sizeKB} KB)`);
+        } catch (err) {
+          errors.push(`[${id}] secret 视频 ${src}: ${err.message}`);
+        }
+      }
+
+      // 生成随机 salt 和 IV
+      const salt = crypto.randomBytes(16);
+      const iv = crypto.randomBytes(12);
+
+      // PBKDF2 密钥派生（答案即密钥）
+      const key = crypto.pbkdf2Sync(answer, salt, 100000, 32, 'sha256');
+
+      // AES-256-GCM 加密 secret payload（媒体以静态文件路径形式存放）
+      const payload = JSON.stringify({
+        text: secret.text || '',
+        images,
+        videos
+      });
+
+      const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+      let encrypted = cipher.update(payload, 'utf-8');
+      encrypted = Buffer.concat([encrypted, cipher.final()]);
+      const authTag = cipher.getAuthTag();
+
+      // 拼接格式：iv(12字节) + 密文 + authTag(16字节)
+      const combined = Buffer.concat([iv, encrypted, authTag]);
+
+      outEntry = {
+        question,
+        description,
+        photo: photoUrl,
+        salt: salt.toString('base64'),
+        data: combined.toString('base64'),
+        to
+      };
+    } else {
+      // ── 无收件人：仅公开照片+描述，无 question/answer/secret ──
+      if (question || answer || secret) {
+        errors.push(`[${id}] 无收件人条目仅展示照片+描述，已忽略 question/answer/secret`);
+      }
+      outEntry = { description, photo: photoUrl };
     }
-
-    // ── 生成随机 salt 和 IV ────────────────────
-    const salt = crypto.randomBytes(16);
-    const iv = crypto.randomBytes(12);
-
-    // ── PBKDF2 密钥派生（答案即密钥） ────────────
-    const key = crypto.pbkdf2Sync(answer, salt, 100000, 32, 'sha256');
-
-    // ── AES-256-GCM 加密 secret payload ────────
-    // 额外内容统一加密；媒体以静态文件路径形式存放
-    const payload = JSON.stringify({
-      text: secret.text || '',
-      images,
-      videos
-    });
-
-    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-    let encrypted = cipher.update(payload, 'utf-8');
-    encrypted = Buffer.concat([encrypted, cipher.final()]);
-    const authTag = cipher.getAuthTag();
-
-    // 拼接格式：iv(12字节) + 密文 + authTag(16字节)
-    const combined = Buffer.concat([iv, encrypted, authTag]);
-
-    const outEntry = {
-      question,
-      description,
-      photo: photoUrl,
-      salt: salt.toString('base64'),
-      data: combined.toString('base64')
-    };
-    if (to) outEntry.to = to; // to 可选：无收件人的照片省略该字段
     output[id] = outEntry;
 
     // ── 生成 QR 码 ─────────────────────────────

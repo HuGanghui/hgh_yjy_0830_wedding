@@ -61,6 +61,7 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
   }
 }
 ```
+**无收件人条目**（config 中省略 `to`）在 `data.json` 中只有 `description` 与 `photo` 两个字段，不加密、无 `salt`/`data`——页面据此（`entry.data` 是否存在）判断是否渲染问题与解锁区。
 
 解密后的 payload（额外内容）：
 ```json
@@ -70,6 +71,7 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 **关键点：**
 - 媒体由 `build.js` 的 `copyMedia()` 拷贝到 `public/media/<id>/`：公开照片放 `photo/`（保留原文件名），secret 图片/视频放 `secret/`（文件名随机：`crypto.randomBytes(16).toString('hex')` + 扩展名）。data.json 只存路径。**每次构建会先清空整个 `public/media/` 和 `qrcodes/`**，保证产物与 config 严格一致、不残留旧文件（避免过期 QR 码被误发）。
 - secret 的 `text` 加密进 `data` 字段；公开字段（`to`/`question`/`description`/`photo`）为明文。`to` **可选**：无特定收件人的照片可省略，页面不显示「To 某人」标签（`build.js` 与 `index.html` 均已适配）。
+- **有无 `to` 决定是否为解锁条目**：有 `to` → 必有 `question`/`answer`/`secret`，额外内容加密（`build.js` 校验并加密）；无 `to` → 仅照片+描述，`question`/`answer`/`secret` 被忽略并告警，不产出 `salt`/`data`。
 - **secret 媒体是 `public/` 下可直链的静态文件**——路径随机只是防枚举的缓解，不是真正的机密性（用户已接受该取舍）。图片/视频加载用 `<img>` / `<video controls preload="metadata">` 直链，**已无 Blob URL 逻辑**。
 - 解密入口在 `public/index.html` 的 IIFE 脚本：加载后先渲染公开区 → `base64ToBytes()` → PBKDF2 deriveKey → `crypto.subtle.decrypt` → JSON.parse → 渲染 `text/images/videos`。
 - `public/index.html` 是零依赖单文件（原生 HTML/CSS/JS），移动端优先。

@@ -302,7 +302,7 @@
     <p id="state-error-msg">无法加载内容</p>
   </div>
 
-  <div class="footer">扫码解锁 · 答对可见</div>
+  <div class="footer" id="footer">扫码解锁 · 答对可见</div>
 </div>
 
 <script>
@@ -320,6 +320,9 @@
   const $answer       = document.getElementById('answer-input');
   const $unlockBtn    = document.getElementById('unlock-btn');
   const $errorMsg     = document.getElementById('error-msg');
+  const $questionBlock = document.querySelector('.question-block');
+  const $inputGroup    = document.querySelector('.input-group');
+  const $footer        = document.getElementById('footer');
   const $content      = document.getElementById('content-text');
   const $secretImages = document.getElementById('secret-images');
   const $secretVideos = document.getElementById('secret-videos');
@@ -357,14 +360,22 @@
     $photoWrap.style.display = 'block';
   }
   $description.textContent = entry.description || '';
-  // to 可选：无收件人的条目不显示「To 某人」标签
-  $toLabel.textContent = entry.to ? `To ${entry.to}` : '';
-  $toLabel.hidden = !entry.to;
-  $question.textContent = entry.question;
+
+  // 有 data 字段的条目才有解锁环节；无 to 的条目仅展示照片+描述
+  const isGated = !!entry.data;
+  if (isGated) {
+    $toLabel.textContent = entry.to ? `To ${entry.to}` : '';
+    $question.textContent = entry.question || '';
+  } else {
+    $questionBlock.style.display = 'none';
+    $inputGroup.style.display = 'none';
+    $errorMsg.style.display = 'none';
+    $footer.textContent = '扫码查看';
+  }
 
   $loading.style.display = 'none';
   $public.classList.add('active');
-  $answer.focus();
+  if (isGated) $answer.focus();
 
   // ── Helper: base64 → Uint8Array ──────────────
   function base64ToBytes(b64) {
