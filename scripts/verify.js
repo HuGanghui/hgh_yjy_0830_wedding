@@ -205,12 +205,27 @@ async function checkBrowserFlow(data, configById) {
     if (!publicShown) { fail('浏览器: 加载后公开区未显示'); return; }
     pass('浏览器: 公开区直接渲染（照片/描述/问题，无需答题）');
 
+    // 本次改动：question 文案进输入框占位符；question 单独一行与 footer 已移除
+    if (doc.getElementById('question') || doc.getElementById('footer')) {
+      fail('浏览器: question 单独一行 / footer 仍在（应已移除）');
+    } else {
+      pass('浏览器: question 单独一行与 footer 已移除');
+    }
+
     if (!gatedId) { pass('浏览器: 无解锁条目，仅验公开区（符合设计）'); return; }
     if (!answer) { fail(`浏览器: 需真实答案测解锁流程，但 config 中 [${gatedId}] 缺 answer`); return; }
 
     const $input = doc.getElementById('answer-input');
     const $btn = doc.getElementById('unlock-btn');
     const $err = doc.getElementById('error-msg');
+
+    // 问题文案作为输入框占位符（不再单独一行展示）
+    const expectPh = (configById[gatedId] && configById[gatedId].question) || '请输入答案';
+    if ($input.placeholder !== expectPh) {
+      fail(`浏览器: 输入框占位符应为「${expectPh}」→ 实际「${$input.placeholder}」`);
+    } else {
+      pass('浏览器: 问题文案作为输入框占位符');
+    }
 
     // ② 错误答案 → 提示「答案不正确」（不依赖真实答案，config 缺失也能验）
     $input.value = WRONG_ANSWER;

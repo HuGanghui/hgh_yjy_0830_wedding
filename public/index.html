@@ -118,11 +118,6 @@
     margin-bottom: 10px;
     letter-spacing: 0.02em;
   }
-  .question {
-    font-size: 1.05rem;
-    font-weight: 600;
-    line-height: 1.6;
-  }
 
   /* ── Input ─────────────────────────────────── */
   .input-group {
@@ -249,18 +244,9 @@
   }
   .state-error.active { display: block; }
 
-  /* ── Footer ────────────────────────────────── */
-  .footer {
-    text-align: center;
-    margin-top: 24px;
-    font-size: 0.78rem;
-    color: #c4b9a6;
-  }
-
   /* ── Responsive ────────────────────────────── */
   @media (max-width: 400px) {
     .card { padding: 24px 18px; }
-    .question { font-size: 0.98rem; }
   }
 
   /* ── Lightbox：图片放大预览（零依赖） ───────── */
@@ -436,10 +422,9 @@
         </span>
       </div>
       <span class="to-label" id="to-label"></span>
-      <p class="question" id="question"></p>
     </div>
     <div class="input-group">
-      <input type="text" id="answer-input" placeholder="请输入答案" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <input type="text" id="answer-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
       <button class="btn" id="unlock-btn">解 锁</button>
     </div>
     <p class="error-msg" id="error-msg"></p>
@@ -461,7 +446,6 @@
     <p id="state-error-msg">无法加载内容</p>
   </div>
 
-  <div class="footer" id="footer">扫码解锁 · 答对可见</div>
 </div>
 
 <!-- ═══ Lightbox：图片放大预览 ═══ -->
@@ -491,13 +475,11 @@
   const $photo        = document.getElementById('public-photo');
   const $description  = document.getElementById('description');
   const $toLabel      = document.getElementById('to-label');
-  const $question     = document.getElementById('question');
   const $answer       = document.getElementById('answer-input');
   const $unlockBtn    = document.getElementById('unlock-btn');
   const $errorMsg     = document.getElementById('error-msg');
   const $questionBlock = document.querySelector('.question-block');
   const $inputGroup    = document.querySelector('.input-group');
-  const $footer        = document.getElementById('footer');
   const $content      = document.getElementById('content-text');
   const $secretImages = document.getElementById('secret-images');
   const $secretVideos = document.getElementById('secret-videos');
@@ -540,12 +522,11 @@
   const isGated = !!entry.data;
   if (isGated) {
     $toLabel.textContent = entry.to ? `To ${entry.to}` : '';
-    $question.textContent = entry.question || '';
+    $answer.placeholder = entry.question || '请输入答案';
   } else {
     $questionBlock.style.display = 'none';
     $inputGroup.style.display = 'none';
     $errorMsg.style.display = 'none';
-    $footer.style.display = 'none';
   }
 
   $loading.style.display = 'none';
