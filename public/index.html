@@ -296,7 +296,7 @@
     box-shadow: 0 8px 48px rgba(0, 0, 0, 0.5);
     transform-origin: 50% 50%;
     will-change: transform;
-    pointer-events: none;    /* 手势统一交给 stage，图片不单独拦截 */
+    -webkit-user-drag: none; /* 允许微信长按保存：img 保持可交互，手势靠事件冒泡到 stage */
   }
   .lightbox-close {
     position: fixed;
@@ -467,7 +467,7 @@
 <!-- ═══ Lightbox：图片放大预览 ═══ -->
 <div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="图片放大预览">
   <div class="lightbox-stage" id="lightbox-stage">
-    <img id="lightbox-img" alt="放大预览">
+    <img id="lightbox-img" alt="放大预览" draggable="false">
   </div>
   <button class="lightbox-download" id="lightbox-download" aria-label="下载图片">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -727,6 +727,7 @@
   let lbPinch = null;                  // 捏合起点：{d: 初始指距, s: 初始缩放}
   let lbMoved = false;                 // 本手势是否位移过（区分点按与拖动）
   let lbLast = null;                   // 单指上一帧位置
+  let lbLongPress = false, lbPressTimer = null;   // 长按（微信保存图片）检测：长按抬起不触发缩放
 
   function lbApply(animate) {
     $lbImg.style.transition = animate ? 'transform 0.25s ease' : 'none';
@@ -848,6 +849,9 @@
     try { $lbStage.setPointerCapture(e.pointerId); } catch {}
     lbMoved = false;
     lbLast = null;
+    clearTimeout(lbPressTimer);
+    lbLongPress = false;
+    lbPressTimer = setTimeout(() => { lbLongPress = true; }, 400);   // 按住超 400ms 视为长按
     if (lbPtrs.size === 2) {
       const [a, b] = [...lbPtrs.values()];
       lbPinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, s: lb.s };
@@ -875,6 +879,7 @@
   });
   const lbEndPointer = (e) => {
     lbPtrs.delete(e.pointerId);
+    clearTimeout(lbPressTimer);
     if (lbPtrs.size < 2) lbPinch = null;
     if (lbPtrs.size === 1) lbLast = null;
     if (lbPtrs.size === 0) { lbLast = null; lbApply(true); }
@@ -884,6 +889,7 @@
 
   // ── 点击：图上点按缩放 ⇄ 还原；点图外背景关闭 ──
   $lbStage.addEventListener('click', (e) => {
+    if (lbLongPress) { lbLongPress = false; return; }   // 长按（微信保存图片）后抬起，忽略缩放
     if (lbMoved) return;   // 拖动/捏合后的 click 忽略
     const r = $lbImg.getBoundingClientRect();   // 含 transform，反映缩放后实际位置
     const inside = e.clientX >= r.left && e.clientX <= r.right &&
