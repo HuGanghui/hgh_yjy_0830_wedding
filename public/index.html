@@ -351,6 +351,40 @@
   }
   .download-hint.show { opacity: 1; }
   body.lightbox-open { overflow: hidden; }   /* 预览时锁定背景滚动 */
+
+  /* ── 动效：花瓣飘落 + 解锁礼花（零依赖） ── */
+  #petals {
+    position: fixed;
+    inset: 0;
+    z-index: 6;                  /* 盖住卡片，但低于 lightbox */
+    pointer-events: none;        /* 纯装饰，不挡任何点击/长按 */
+    overflow: hidden;
+  }
+  #petals .petal {
+    position: absolute;
+    top: -40px;                  /* 起点在视口外上方 */
+    border-radius: 88% 12% 88% 12%;   /* 花瓣形：对角不对称圆角 */
+    opacity: 0;
+    will-change: transform, opacity;
+    animation: petal-fall linear infinite;   /* 时长/延迟由 JS 逐片设定 */
+  }
+  @keyframes petal-fall {
+    0%   { transform: translate3d(0, -6vh, 0) rotate(0deg); opacity: 0; }
+    6%   { opacity: .9; }
+    100% { transform: translate3d(var(--sway, 12vw), 108vh, 0) rotate(var(--spin, 540deg)); opacity: .9; }
+  }
+  #confetti {
+    position: fixed;
+    inset: 0;
+    z-index: 999;                /* 盖住卡片，但低于 lightbox(1000) */
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #petals, #confetti { display: none; }   /* 尊重「减弱动态效果」系统设置 */
+  }
 </style>
 </head>
 <body>
@@ -474,8 +508,17 @@
   </button>
 </div>
 
+<!-- ═══ 花瓣飘落：扫码进页全程氛围（纯装饰） ═══ -->
+<div id="petals" aria-hidden="true"></div>
+<!-- ═══ 礼花庆祝：解锁成功瞬间（canvas） ═══ -->
+<canvas id="confetti" aria-hidden="true"></canvas>
+
 <script>
 (async function () {
+  // 尊重系统「减弱动态效果」；jsdom 无 matchMedia（守卫返回 undefined）→ 默认 false 即开启动效
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const PETAL_COLORS = ['#f7b7c8', '#f9d5d7', '#ffd9c0', '#fce4e8', '#fff0f3', '#f8e1d9'];
+
   // ── DOM refs ─────────────────────────────────
   const $loading      = document.getElementById('loading');
   const $public       = document.getElementById('public');
@@ -537,6 +580,7 @@
 
     $loading.style.display = 'none';
     $public.classList.add('active');
+    startPetals();                       // 扫码进页：花瓣全程飘落（婚礼氛围）
     if (isGated) $answer.focus();
   }
 
@@ -640,6 +684,7 @@
   // ── 专属信件视图（答对后渲染） ──
   // 隐藏公开区（照片/描述/输入），跳到信件卡片：致[to] + 正文 + 图片/视频 + 落款。
   function renderLetter(to, payload) {
+    fireConfetti();                      // 解锁成功：礼花庆祝
     $public.classList.remove('active');
     if (to) $letterTo.textContent = to;
     if (payload && payload.text) $content.textContent = payload.text;
@@ -875,6 +920,83 @@
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeLightbox();
   });
+
+  // ── 动效：花瓣飘落 + 解锁礼花（零依赖） ─────
+
+  // 花瓣：扫码进页全程飘落。DOM 元素 + CSS 动画无限循环，负 delay 让打开瞬间已铺满半空。
+  function startPetals() {
+    if (reduceMotion) return;
+    const $petals = document.getElementById('petals');
+    if (!$petals || $petals.childElementCount > 0) return;   // 已启动，幂等
+    const n = Math.min(22, Math.max(14, Math.floor(innerWidth / 36)));   // 按屏宽自适应密度
+    for (let i = 0; i < n; i++) {
+      const size = 12 + Math.random() * 14;                  // 12–26px
+      const dur = 9 + Math.random() * 9;                     // 9–18s 一程
+      const p = document.createElement('span');
+      p.className = 'petal';
+      p.style.cssText = [
+        `left:${Math.random() * 100}vw`,
+        `width:${size}px;height:${size * (0.9 + Math.random() * 0.4)}px`,
+        `background:${PETAL_COLORS[i % PETAL_COLORS.length]}`,
+        `animation-duration:${dur}s`,
+        `animation-delay:-${(Math.random() * dur).toFixed(2)}s`,
+        `--sway:${((Math.random() * 2 - 1) * 18).toFixed(1)}vw`,
+        `--spin:${((Math.random() * 2 - 1) * 720).toFixed(0)}deg`,
+      ].join(';');
+      $petals.appendChild(p);
+    }
+  }
+  function stopPetals() {
+    const $petals = document.getElementById('petals');
+    if ($petals) $petals.innerHTML = '';
+  }
+
+  // 礼花：解锁成功瞬间一次爆发（canvas，双向 ~160 粒子，慢飘 8s 渐隐，大彩纸看得清）。
+  function fireConfetti() {
+    const $c = document.getElementById('confetti');
+    if (!$c || reduceMotion) return;
+    $c.dataset.fired = '1';                    // 供测试断言触发点；同一次解锁只放一轮
+    const ctx = $c.getContext && $c.getContext('2d');
+    if (!ctx) return;                          // jsdom 无 canvas 2D，跳过绘制
+    const DPR = Math.min(2, window.devicePixelRatio || 1);
+    $c.width = innerWidth * DPR;
+    $c.height = innerHeight * DPR;
+    ctx.scale(DPR, DPR);
+
+    const COLORS = ['#ff6b8a', '#ffa4b8', '#ffd166', '#ffb84d', '#c98cf5', '#7bd3c8', '#ffffff'];
+    const parts = [];
+    for (let i = 0; i < 160; i++) {
+      const fromTop = i % 2 === 0;             // 一半从天而降、一半从底上冲，更有礼花感
+      parts.push({
+        x: innerWidth * (0.15 + Math.random() * 0.7),
+        y: fromTop ? -10 : innerHeight + 10,
+        vx: (Math.random() - 0.5) * 5,
+        vy: (fromTop ? 1 : -1) * (0.8 + Math.random() * 2.5),
+        g: 0.03, w: 10 + Math.random() * 12, h: 6 + Math.random() * 7,
+        rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.12,
+        color: COLORS[(Math.random() * COLORS.length) | 0],
+      });
+    }
+    const t0 = performance.now();
+    function frame(now) {
+      const t = (now - t0) / 1000;
+      ctx.clearRect(0, 0, innerWidth, innerHeight);
+      ctx.globalAlpha = Math.max(0, 1 - t / 8);   // 8s 内慢飘渐隐消失
+      for (const p of parts) {
+        p.vy += p.g; p.vx *= 0.995;
+        p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      }
+      if (t < 8) requestAnimationFrame(frame);
+      else ctx.clearRect(0, 0, innerWidth, innerHeight);
+    }
+    requestAnimationFrame(frame);
+  }
 
   // ── Bind events ──────────────────────────────
   $photo.addEventListener('click', () => {
