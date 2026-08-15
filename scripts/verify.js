@@ -301,7 +301,7 @@ async function checkMultiLetterRouting(data, configById) {
   }
   pass(`一码多信: 选中「${gatedId}」（${letters.length} 封信: ${letters.map(l => l.to).join('、')}）`);
 
-  // ① 同一二维码扫码 → 公开区直接渲染（照片/描述/输入框，无收件人预指）
+  // ① 同一二维码扫码 → 公开区直接渲染（照片/描述/输入框，To 标签并列展示全部收件人）
   const dom = createDom(data, gatedId);
   const win = dom.window;
   const doc = win.document;
@@ -309,6 +309,15 @@ async function checkMultiLetterRouting(data, configById) {
     const publicShown = await waitFor(win, () => doc.getElementById('public').classList.contains('active'));
     if (!publicShown) { fail(`一码多信: [${gatedId}] 扫码后公开区未渲染`); return; }
     pass('一码多信: 同一二维码扫码后公开区直接渲染');
+
+    // ①′ 公开区 To 标签并列展示全部收件人（如「To 花花 / 梁雪 / 小童」）
+    const expectLabel = `To ${letters.map(l => l.to).join(' / ')}`;
+    const toLabelShown = doc.getElementById('to-label').textContent;
+    if (toLabelShown !== expectLabel) {
+      fail(`一码多信: [${gatedId}] 公开区收件人标签应为「${expectLabel}」→ 实际「${toLabelShown}」`);
+    } else {
+      pass(`一码多信: 公开区 To 标签并列展示收件人「${expectLabel}」`);
+    }
 
     // ② 错误收信码 → 拒绝并提示，不出现专属信件
     const $input = doc.getElementById('answer-input');

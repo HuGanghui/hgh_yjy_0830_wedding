@@ -546,8 +546,8 @@
     // 有 letters 字段的条目才有解锁环节；无收件人的条目仅展示照片+描述
     const isGated = Array.isArray(entry.letters) && entry.letters.length > 0;
     if (isGated) {
-      // To 标签仅「单收件人」展示；一码多信（A-05）不预指收件人
-      $toLabel.textContent = entry.letters.length === 1 ? `To ${entry.letters[0].to}` : '';
+      // To 标签并列展示全部收件人：单收件人「To 某人」，一码多信如「To 花花 / 梁雪 / 小童」
+      $toLabel.textContent = `To ${entry.letters.map(l => l.to).join(' / ')}`;
       $answer.placeholder = entry.question || '请输入答案';
     } else {
       $questionBlock.style.display = 'none';
