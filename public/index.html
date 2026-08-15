@@ -87,6 +87,7 @@
     display: block;
     /* 加载占位：aspect-ratio 由 JS 按照片实际比例设置，避免图片到达时布局跳动 */
     background: var(--border);
+    cursor: zoom-in;  /* 可点击放大预览 */
   }
 
   .description {
@@ -211,6 +212,7 @@
     border-radius: 8px;
     display: block;
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    cursor: zoom-in;  /* 可点击放大预览 */
   }
   .media video {
     width: 100%;
@@ -260,6 +262,62 @@
     .card { padding: 24px 18px; }
     .question { font-size: 0.98rem; }
   }
+
+  /* ── Lightbox：图片放大预览（零依赖） ───────── */
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: none;
+    background: rgba(0, 0, 0, 0.92);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .lightbox.open { display: block; }
+  .lightbox-stage {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    touch-action: none;      /* 手势交给 JS（捏合/拖动），禁用浏览器缩放滚动 */
+    cursor: zoom-in;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .lightbox-stage.zoomed { cursor: grab; }
+  .lightbox-stage.zoomed.dragging { cursor: grabbing; }
+  .lightbox-stage img {
+    max-width: 100vw;
+    max-height: 100vh;
+    max-height: 100dvh;      /* 手机地址栏收起时用动态视口高 */
+    width: auto;
+    height: auto;
+    border-radius: 4px;
+    box-shadow: 0 8px 48px rgba(0, 0, 0, 0.5);
+    transform-origin: 50% 50%;
+    will-change: transform;
+    pointer-events: none;    /* 手势统一交给 stage，图片不单独拦截 */
+  }
+  .lightbox-close {
+    position: fixed;
+    top: max(14px, env(safe-area-inset-top));
+    right: max(14px, env(safe-area-inset-right));
+    z-index: 1001;
+    width: 42px;
+    height: 42px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    -webkit-appearance: none;
+  }
+  .lightbox-close:active { background: rgba(255, 255, 255, 0.32); }
+  body.lightbox-open { overflow: hidden; }   /* 预览时锁定背景滚动 */
 </style>
 </head>
 <body>
@@ -367,6 +425,14 @@
   </div>
 
   <div class="footer" id="footer">扫码解锁 · 答对可见</div>
+</div>
+
+<!-- ═══ Lightbox：图片放大预览 ═══ -->
+<div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="图片放大预览">
+  <div class="lightbox-stage" id="lightbox-stage">
+    <img id="lightbox-img" alt="放大预览">
+  </div>
+  <button class="lightbox-close" id="lightbox-close" aria-label="关闭预览">✕</button>
 </div>
 
 <script>
@@ -571,6 +637,7 @@
         img.src = src;
         img.alt = '照片';
         img.loading = 'lazy';
+        img.addEventListener('click', () => openLightbox(img.currentSrc || img.src));
         $secretImages.appendChild(img);
       }
     }
@@ -602,7 +669,143 @@
     $stateErrMsg.textContent = msg;
   }
 
+  // ── Lightbox：图片放大预览（零依赖） ─────────
+  // 交互：点按 ⇄ 放大/还原、双指捏合缩放、拖动平移（放大后）、滚轮缩放、点背景/✕/Esc 关闭。
+  const $lightbox = document.getElementById('lightbox');
+  const $lbStage  = document.getElementById('lightbox-stage');
+  const $lbImg    = document.getElementById('lightbox-img');
+  const $lbClose  = document.getElementById('lightbox-close');
+  let lb = { s: 1, tx: 0, ty: 0 };     // 当前 scale + 平移量
+  let lbFitW = 0, lbFitH = 0;          // 适配视口的基准尺寸（未缩放），钳制平移边界用
+  let lbPtrs = new Map();              // pointerId -> {x, y}
+  let lbPinch = null;                  // 捏合起点：{d: 初始指距, s: 初始缩放}
+  let lbMoved = false;                 // 本手势是否位移过（区分点按与拖动）
+  let lbLast = null;                   // 单指上一帧位置
+
+  function lbApply(animate) {
+    $lbImg.style.transition = animate ? 'transform 0.25s ease' : 'none';
+    $lbImg.style.transform = `translate(${lb.tx}px, ${lb.ty}px) scale(${lb.s})`;
+    $lbStage.classList.toggle('zoomed', lb.s > 1.001);
+  }
+  function lbReset() { lb.s = 1; lb.tx = 0; lb.ty = 0; lbApply(true); }
+
+  function lbUpdateFit() {  // 图片加载后：按自然尺寸等比放进视口
+    const nw = $lbImg.naturalWidth, nh = $lbImg.naturalHeight;
+    if (!nw || !nh) return;
+    const k = Math.min(innerWidth / nw, innerHeight / nh);
+    lbFitW = nw * k;
+    lbFitH = nh * k;
+  }
+
+  function lbClamp() {  // 平移边界：缩放后的图片至少盖住画面
+    const maxX = Math.max(0, (lbFitW * lb.s - innerWidth) / 2);
+    const maxY = Math.max(0, (lbFitH * lb.s - innerHeight) / 2);
+    lb.tx = Math.min(maxX, Math.max(-maxX, lb.tx));
+    lb.ty = Math.min(maxY, Math.max(-maxY, lb.ty));
+  }
+
+  // 以屏幕点 (px,py) 为锚缩放到 s，保持该点不动（比例缩放锚点坐标的仿射变换）
+  function lbZoomAt(s, px, py, animate) {
+    s = Math.max(1, Math.min(6, s));
+    if (s === 1) { lb.s = 1; lb.tx = 0; lb.ty = 0; }
+    else {
+      const cx = innerWidth / 2 + lb.tx;
+      const cy = innerHeight / 2 + lb.ty;
+      lb.tx += (px - cx) * (1 - s / lb.s);
+      lb.ty += (py - cy) * (1 - s / lb.s);
+      lb.s = s;
+      lbClamp();
+    }
+    lbApply(animate);
+  }
+
+  function openLightbox(src) {
+    $lbImg.src = src;
+    lbReset();
+    lbUpdateFit();
+    $lightbox.classList.add('open');
+    document.body.classList.add('lightbox-open');
+    $lbClose.focus();
+  }
+  function closeLightbox() {
+    $lightbox.classList.remove('open');
+    document.body.classList.remove('lightbox-open');
+    $lbImg.removeAttribute('src');   // 释放内存
+    lbPtrs.clear(); lbPinch = null; lbLast = null;
+  }
+
+  $lbImg.addEventListener('load', lbUpdateFit);
+
+  // ── 手势：Pointer Events（拖动平移 + 双指捏合） ──
+  $lbStage.addEventListener('pointerdown', (e) => {
+    lbPtrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { $lbStage.setPointerCapture(e.pointerId); } catch {}
+    lbMoved = false;
+    lbLast = null;
+    if (lbPtrs.size === 2) {
+      const [a, b] = [...lbPtrs.values()];
+      lbPinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, s: lb.s };
+    }
+  });
+  $lbStage.addEventListener('pointermove', (e) => {
+    if (!lbPtrs.has(e.pointerId)) return;
+    const p = lbPtrs.get(e.pointerId);
+    p.x = e.clientX; p.y = e.clientY;
+    if (lbPtrs.size === 2 && lbPinch) {
+      const [a, b] = [...lbPtrs.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      lbMoved = true;
+      lbZoomAt(lbPinch.s * (d / lbPinch.d), (a.x + b.x) / 2, (a.y + b.y) / 2, false);
+    } else if (lbPtrs.size === 1) {
+      if (lb.s > 1.001 && lbLast) {
+        lb.tx += p.x - lbLast.x;
+        lb.ty += p.y - lbLast.y;
+        lbMoved = true;
+        lbClamp();
+        lbApply(false);
+      }
+      lbLast = { x: p.x, y: p.y };
+    }
+  });
+  const lbEndPointer = (e) => {
+    lbPtrs.delete(e.pointerId);
+    if (lbPtrs.size < 2) lbPinch = null;
+    if (lbPtrs.size === 1) lbLast = null;
+    if (lbPtrs.size === 0) { lbLast = null; lbApply(true); }
+  };
+  $lbStage.addEventListener('pointerup', lbEndPointer);
+  $lbStage.addEventListener('pointercancel', lbEndPointer);
+
+  // ── 点击：图上点按缩放 ⇄ 还原；点图外背景关闭 ──
+  $lbStage.addEventListener('click', (e) => {
+    if (lbMoved) return;   // 拖动/捏合后的 click 忽略
+    const r = $lbImg.getBoundingClientRect();   // 含 transform，反映缩放后实际位置
+    const inside = e.clientX >= r.left && e.clientX <= r.right &&
+                   e.clientY >= r.top && e.clientY <= r.bottom;
+    if (inside) {
+      if (lb.s <= 1.001) lbZoomAt(2.4, e.clientX, e.clientY, true);
+      else lbReset();
+    } else {
+      closeLightbox();
+    }
+  });
+
+  // ── 桌面滚轮缩放 ──
+  $lbStage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    lbZoomAt(lb.s * Math.pow(1.002, -e.deltaY), e.clientX, e.clientY, true);
+  }, { passive: false });
+
+  // ── 关闭：✕ 按钮 / Esc ──
+  $lbClose.addEventListener('click', closeLightbox);
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeLightbox();
+  });
+
   // ── Bind events ──────────────────────────────
+  $photo.addEventListener('click', () => {
+    if ($photoWrap.style.display === 'block') openLightbox($photo.src);
+  });
   $unlockBtn.addEventListener('click', tryUnlock);
   $answer.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') tryUnlock();
