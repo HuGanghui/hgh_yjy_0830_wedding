@@ -15,9 +15,8 @@
 //      点背景/Esc/✕ 关闭 —— 逐项断言，防止 index.html 的交互代码被改坏。
 //   8. 图片下载（jsdom，测试二内）：lightbox 点「下载」——手机端走 navigator.share(文件)；
 //      桌面退回 <a download> 直链；手机端无分享能力（微信内置浏览器等）提示长按保存、不触发下载。
-//   9. 统一入口 + 密码路由（jsdom，测试二内）：无 ?id= 时显示「请输入收信码」入口页，
-//      输入密码后并行试解密所有门禁条目定位身份 → 跳转到对应专属信件。断言错误密码被拒、
-//      不同密码路由到不同专属信件（demo：花花/梁雪/小童 三码三信）。
+//   9. 一码多信（jsdom，测试二内）：同一二维码（?id=A-05）→ 公开区直接渲染；输入错误
+//      收信码被拒；输入不同收信码分别路由到不同专属信件（demo：A-05 花花/梁雪/小童 三码三信）。
 //
 // 安全约定：只输出 pass/fail，绝不打印答案、绝不打印解密后的明文内容。任一失败 → 非 0 退出。
 
@@ -49,6 +48,22 @@ function decryptData(saltB64, dataB64, answer) {
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(authTag);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf-8');
+}
+
+// config 条目 → 其所有信件的答案列表（兼容两种写法：letters[] 与顶层 to/answer/secret 简写）
+function configLetterAnswers(cfg) {
+  if (!cfg) return [];
+  if (Array.isArray(cfg.letters) && cfg.letters.length) return cfg.letters.map(l => l.answer);
+  if (cfg.answer) return [cfg.answer];
+  return [];
+}
+
+// config 条目 → 其所有信件的收件人列表（顺序与 configLetterAnswers 对齐）
+function configLetterTos(cfg) {
+  if (!cfg) return [];
+  if (Array.isArray(cfg.letters) && cfg.letters.length) return cfg.letters.map(l => l.to);
+  if (cfg.to) return [cfg.to];
+  return [];
 }
 
 // git 当前（已暂存/已提交）跟踪的 media 路径集合，去掉 public/ 前缀与 data.json 引用对齐
@@ -116,6 +131,8 @@ function checkPhotoVariants(photoRel) {
 }
 
 // ── QR 码：完整性 + 内容解码（测试三） ─────────────────────
+// 每张二维码应编码 baseUrl?id=<id> —— URL 只与 baseUrl 和 id 相关，因此永不变：
+// 同一张二维码（如 A-05）被多人扫描，各人输自己的收信码解锁各自的专属信件。
 async function checkQRCodes(config) {
   const ids = config
     ? (config.entries || []).map(e => e.id).filter(Boolean)
@@ -126,11 +143,11 @@ async function checkQRCodes(config) {
   if (!config) { fail('config.json 不存在，无法校验 QR 编码内容'); }
   else if (!baseUrl) { fail('config.baseUrl 缺失，无法校验 QR 编码内容'); }
 
-  for (const id of ids) {
-    const qrPath = path.join('qrcodes', `${id}.png`);
+  // 单张 QR：PNG 完整性 + jsqr 解码内容比对
+  const checkQR = async (qrPath, expectedUrl, tag) => {
     if (!fs.existsSync(qrPath)) {
-      fail(`QR 码缺失: qrcodes/${id}.png（未运行 npm run build）`);
-      continue;
+      fail(`${tag} 缺失: ${qrPath}（未运行 npm run build）`);
+      return;
     }
     const sizeKB = (fs.statSync(qrPath).size / 1024).toFixed(1);
 
@@ -138,25 +155,28 @@ async function checkQRCodes(config) {
     try {
       ({ data: raw, info } = await sharp(qrPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true }));
     } catch (err) {
-      fail(`QR 码不是有效 PNG: qrcodes/${id}.png (${err.message})`);
-      continue;
+      fail(`${tag} 不是有效 PNG: ${qrPath} (${err.message})`);
+      return;
     }
     if (info.width !== 500 || info.height !== 500) {
-      fail(`QR 码尺寸异常: qrcodes/${id}.png ${info.width}x${info.height}（应为 500x500）`);
-      continue;
+      fail(`${tag} 尺寸异常: ${qrPath} ${info.width}x${info.height}（应为 500x500）`);
+      return;
     }
-    pass(`QR PNG 有效: qrcodes/${id}.png (500×500, ${sizeKB} KB)`);
+    pass(`${tag} PNG 有效: ${qrPath} (500×500, ${sizeKB} KB)`);
 
-    if (!baseUrl) continue; // 内容校验的前提缺失，前面已 fail
+    if (!baseUrl) return; // 内容校验的前提缺失，前面已 fail
     const code = jsQR(new Uint8ClampedArray(raw.buffer, raw.byteOffset, raw.byteLength), info.width, info.height);
-    const expected = `${baseUrl}?id=${encodeURIComponent(id)}`;
     if (!code) {
-      fail(`QR 内容无法识别: qrcodes/${id}.png`);
-    } else if (code.data === expected) {
-      pass(`QR 编码内容正确: ${code.data}`);
+      fail(`${tag} 内容无法识别: ${qrPath}`);
+    } else if (code.data === expectedUrl) {
+      pass(`${tag} 编码内容正确: ${code.data}`);
     } else {
-      fail(`QR 编码内容与预期不符: qrcodes/${id}.png\n    预期: ${expected}\n    实际: ${code.data}`);
+      fail(`${tag} 编码内容与预期不符: ${qrPath}\n    预期: ${expectedUrl}\n    实际: ${code.data}`);
     }
+  };
+
+  for (const id of ids) {
+    await checkQR(path.join('qrcodes', `${id}.png`), `${baseUrl}?id=${encodeURIComponent(id)}`, 'QR 码');
   }
 }
 
@@ -195,8 +215,9 @@ async function waitFor(win, check, timeout = 5000) {
 // ── 浏览器流程冒烟测试（测试二）：真实 index.html + 模拟点击 ─────
 async function checkBrowserFlow(data, configById) {
   // 挑一个有收件人（可解锁）的条目做流程测试；没有就只验公开区渲染
-  const gatedId = Object.keys(data).find(id => data[id] && data[id].data);
-  const answer = (gatedId && configById[gatedId] && configById[gatedId].answer) || null;
+  const gatedId = Object.keys(data).find(id =>
+    data[id] && Array.isArray(data[id].letters) && data[id].letters.length > 0);
+  const answer = configLetterAnswers(configById[gatedId])[0] || null;
 
   const dom = createDom(data, gatedId);
   const win = dom.window;
@@ -243,7 +264,7 @@ async function checkBrowserFlow(data, configById) {
     const letterShown = await waitFor(win, () => doc.getElementById('letter').classList.contains('active'));
     if (!letterShown) { fail('浏览器: 正确答案未解锁出专属信件'); return; }
     const toShown = doc.getElementById('letter-to').textContent;
-    const expectedTo = (configById[gatedId] && configById[gatedId].to) || '';
+    const expectedTo = (data[gatedId].letters[0] && data[gatedId].letters[0].to) || '';
     if (toShown !== expectedTo) {
       fail(`浏览器: 信件收信人应为「${expectedTo}」→ 实际「${toShown}」`);
       return;
@@ -262,66 +283,91 @@ async function checkBrowserFlow(data, configById) {
   }
 }
 
-// ── 统一入口 + 密码路由（浏览器流程的一部分） ────────
-// 无 ?id= 时显示「请输入收信码」入口页；输入密码后并行试解密所有门禁条目定位身份，
-// 跳转到对应专属信件。断言：错误密码被拒、不同密码 → 不同专属信件。
-async function checkUnifiedRouting(data, configById) {
-  const gatedIds = Object.keys(data).filter(id => data[id] && data[id].data);
-  if (gatedIds.length === 0) { pass('路由: 无门禁条目，跳过'); return; }
+// ── 一码多信（浏览器流程的一部分） ────────
+// 同一张二维码（?id=A-05）→ 公开区直接渲染；输入不同收信码 → 各自专属信件。
+// 断言：公开区渲染、错误收信码被拒、每封信的真实收信码 → 对应收信人的信件。
+async function checkMultiLetterRouting(data, configById) {
+  // 找一个「一封多信」条目（letters 多于 1 封），优先 A-05
+  const multi = Object.keys(data).filter(id =>
+    data[id] && Array.isArray(data[id].letters) && data[id].letters.length > 1);
+  const gatedId = multi.includes('A-05') ? 'A-05' : multi[0];
+  if (!gatedId) { pass('一码多信: 当前数据无多信件条目，跳过'); return; }
 
-  // ① 无 ?id= → 显示统一入口页（不显示公开照片/描述）
-  const dom = createDom(data, null);
+  const letters = data[gatedId].letters;
+  const answers = configLetterAnswers(configById[gatedId]);
+  if (answers.length < letters.length) {
+    fail(`一码多信: [${gatedId}] config 答案数(${answers.length}) < data letters 数(${letters.length})`);
+    return;
+  }
+  pass(`一码多信: 选中「${gatedId}」（${letters.length} 封信: ${letters.map(l => l.to).join('、')}）`);
+
+  // ① 同一二维码扫码 → 公开区直接渲染（照片/描述/输入框，无收件人预指）
+  const dom = createDom(data, gatedId);
   const win = dom.window;
   const doc = win.document;
   try {
-    const routeShown = await waitFor(win, () => doc.getElementById('route-screen').classList.contains('active'));
-    if (!routeShown) { fail('路由: 无 ?id= 时应显示「请输入收信码」入口页'); return; }
-    if (doc.getElementById('public').classList.contains('active')) {
-      fail('路由: 无 ?id= 时不应显示公开区（应先输入收信码）');
-    }
-    pass('路由: 无 ?id= 时显示统一入口页（输入收信码）');
+    const publicShown = await waitFor(win, () => doc.getElementById('public').classList.contains('active'));
+    if (!publicShown) { fail(`一码多信: [${gatedId}] 扫码后公开区未渲染`); return; }
+    pass('一码多信: 同一二维码扫码后公开区直接渲染');
 
-    // 取样例：优先 demo 三人（花花/梁雪/小童），否则取前 3 个门禁条目
-    const byTo = (name) => gatedIds.find(id => configById[id] && configById[id].to === name);
-    let sampleIds = ['花花', '梁雪', '小童'].map(byTo).filter(Boolean);
-    if (sampleIds.length < 3) sampleIds = gatedIds.slice(0, 3);
-    sampleIds = [...new Set(sampleIds)].slice(0, 3);
-
-    // ② 错误密码 → 拒绝并提示，不出现专属信件
-    const $input = doc.getElementById('route-input');
-    const $btn = doc.getElementById('route-btn');
-    const $err = doc.getElementById('route-error');
+    // ② 错误收信码 → 拒绝并提示，不出现专属信件
+    const $input = doc.getElementById('answer-input');
+    const $btn = doc.getElementById('unlock-btn');
+    const $err = doc.getElementById('error-msg');
     $input.value = WRONG_ANSWER;
     $btn.click();
-    const errShown = await waitFor(win, () => /不正确/.test($err.textContent));
-    if (!errShown) { fail('路由: 错误密码未被拒绝'); }
-    else pass('路由: 错误密码被拒并提示');
+    const errShown = await waitFor(win, () => /答案不正确/.test($err.textContent));
+    if (!errShown) { fail(`一码多信: [${gatedId}] 错误收信码未被拒绝`); }
+    else pass('一码多信: 错误收信码被拒并提示');
     if (doc.getElementById('letter').classList.contains('active')) {
-      fail('路由: 错误密码竟然解锁了专属信件');
+      fail(`一码多信: [${gatedId}] 错误收信码竟然解锁了专属信件`);
     }
+  } finally {
+    dom.window.close();
+  }
 
-    // ③ 每个样例输自己的真实密码 → 路由到对应的专属信件（收信人正确）
-    for (const id of sampleIds) {
-      const d2 = createDom(data, null);
-      const w2 = d2.window;
-      const doc2 = w2.document;
-      try {
-        const shown = await waitFor(w2, () => doc2.getElementById('route-screen').classList.contains('active'));
-        if (!shown) { fail(`路由: [${id}] 未进入统一入口页`); continue; }
-        doc2.getElementById('route-input').value = configById[id].answer;
-        doc2.getElementById('route-btn').click();
-        const letterShown = await waitFor(w2, () => doc2.getElementById('letter').classList.contains('active'));
-        if (!letterShown) { fail(`路由: [${id}] 输入正确密码后未出现专属信件`); continue; }
-        const toShown = doc2.getElementById('letter-to').textContent;
-        if (toShown !== configById[id].to) {
-          fail(`路由: [${id}] 应路由到「${configById[id].to}」→ 实际「${toShown}」`);
-          continue;
-        }
-        pass(`路由: [${id}] 输入密码后跳转到专属信件（致 ${toShown}）`);
-      } finally {
-        d2.window.close();
+  // ③ 每封信输自己的真实收信码 → 各自专属信件（收信人正确）
+  for (let i = 0; i < letters.length; i++) {
+    const letter = letters[i];
+    const d2 = createDom(data, gatedId);
+    const w2 = d2.window;
+    const doc2 = w2.document;
+    try {
+      const shown = await waitFor(w2, () => doc2.getElementById('public').classList.contains('active'));
+      if (!shown) { fail(`一码多信: [${gatedId}/${letter.to}] 公开区未渲染`); continue; }
+      doc2.getElementById('answer-input').value = answers[i];
+      doc2.getElementById('unlock-btn').click();
+      const letterShown = await waitFor(w2, () => doc2.getElementById('letter').classList.contains('active'));
+      if (!letterShown) { fail(`一码多信: [${gatedId}/${letter.to}] 输入正确收信码后未出现专属信件`); continue; }
+      const toShown = doc2.getElementById('letter-to').textContent;
+      if (toShown !== letter.to) {
+        fail(`一码多信: [${gatedId}/${letter.to}] 应致「${letter.to}」→ 实际「${toShown}」`);
+        continue;
       }
+      pass(`一码多信: [${gatedId}/${letter.to}] 输入收信码解锁出专属信件（致 ${toShown}）`);
+    } finally {
+      d2.window.close();
     }
+  }
+}
+
+// ── 裸地址（无 ?id=）：无统一入口，提示扫描收到的二维码 ──
+async function checkNoEntryFallback(data) {
+  const dom = createDom(data, null);   // ?id= 为空 → 无条目
+  const win = dom.window;
+  const doc = win.document;
+  try {
+    const errShown = await waitFor(win, () => doc.getElementById('state-error').classList.contains('active'));
+    if (!errShown) { fail('裸地址: 未显示「请扫描收到的二维码」提示'); return; }
+    if (!/扫描/.test(doc.getElementById('state-error-msg').textContent)) {
+      fail('裸地址: 提示文案不包含「扫描」（应为请扫描收到的二维码）');
+      return;
+    }
+    if (doc.getElementById('public').classList.contains('active')) {
+      fail('裸地址: 不应显示公开区');
+      return;
+    }
+    pass('裸地址: 提示请扫描收到的二维码，不显示公开区');
   } finally {
     dom.window.close();
   }
@@ -493,18 +539,22 @@ async function main() {
   const configById = {};
   if (config) for (const e of (config.entries || [])) configById[e.id] = e;
 
-  // 统一入口按密码路由：答案必须两两不同，否则同一密码命中多个条目、路由歧义。
+  // 一码多信：同一信封内各封信的收信码必须两两不同，否则同一收信码命中多个收件人、路由歧义。
   // 只提醒不阻断（现仍有共享占位答案，等替换成真实答案后自然消失）；绝不打印答案本身。
   if (config) {
-    const byAnswer = new Map();
     for (const e of (config.entries || [])) {
-      if (!e.answer) continue;
-      if (!byAnswer.has(e.answer)) byAnswer.set(e.answer, []);
-      byAnswer.get(e.answer).push(e.id);
-    }
-    for (const [answer, dupIds] of byAnswer) {
-      if (dupIds.length > 1) {
-        console.log(`  ⚠️ 以下条目共享同一答案（统一入口路由会歧义，请替换为唯一答案）: ${dupIds.join(', ')}`);
+      const ansList = configLetterAnswers(e);
+      const toList = configLetterTos(e);
+      const byAnswer = new Map();
+      ansList.forEach((ans, i) => {
+        if (!ans) return;
+        if (!byAnswer.has(ans)) byAnswer.set(ans, []);
+        byAnswer.get(ans).push(toList[i] || `#${i + 1}`);
+      });
+      for (const [answer, tos] of byAnswer) {
+        if (tos.length > 1) {
+          console.log(`  ⚠️ [${e.id}] 同一信封内多封信共用同一收信码，会命中错人（请改为唯一收信码）: ${tos.join('、')}`);
+        }
       }
     }
   }
@@ -540,51 +590,59 @@ async function main() {
     }
 
     // 无收件人条目：仅公开内容，无解密环节
-    if (!entry.data) {
+    const letters = Array.isArray(entry.letters) ? entry.letters : [];
+    if (letters.length === 0) {
       pass(`[${id}] 无收件人条目（仅公开照片+描述）`);
       continue;
     }
 
-    // 有收件人条目：必须能凭 config 的真实答案解出 payload
-    if (!cfg.answer) {
-      fail(`[${id}] 有收件人但 config 缺 answer`);
+    // 门禁条目：逐封信用 config 的真实收信码解出 payload（答案即密钥）
+    const answers = configLetterAnswers(cfg);
+    if (answers.length !== letters.length) {
+      fail(`[${id}] config 信件数与 data 不一致（${answers.length} vs ${letters.length}）`);
       continue;
     }
 
-    let payload;
-    try {
-      const plaintext = decryptData(entry.salt, entry.data, cfg.answer);
-      payload = JSON.parse(plaintext);
-    } catch (e) {
-      fail(`[${id}] 真实答案解密失败（加密参数或答案不同步）: ${e.message}`);
-      continue;
-    }
-    if (typeof payload !== 'object' || payload === null) {
-      fail(`[${id}] 解密成功但 payload 非法`);
-      continue;
-    }
-    const hasContent = !!payload.text ||
-      (Array.isArray(payload.images) && payload.images.length > 0) ||
-      (Array.isArray(payload.videos) && payload.videos.length > 0);
-    if (!hasContent) {
-      fail(`[${id}] 解密出的额外内容为空（text/images/videos 全空）`);
-      continue;
-    }
-    pass(`[${id}] 真实答案解密成功，payload 合法`);
+    for (let i = 0; i < letters.length; i++) {
+      const letter = letters[i];
+      const tag = `${id}/${letter.to || '???'}`;
+      const answer = answers[i];
 
-    // 答对后可见的 secret 媒体路径也校验
-    for (const rel of [...(payload.images || []), ...(payload.videos || [])]) {
-      checkMediaPath(rel, tracked);
-    }
-
-    // 错误答案拒绝测试（密码学原语对每个条目相同，测一次即可）
-    if (!wrongTestDone) {
-      wrongTestDone = true;
+      let payload;
       try {
-        decryptData(entry.salt, entry.data, WRONG_ANSWER);
-        fail('错误答案竟然解密成功 —— 拒绝逻辑失效！');
-      } catch {
-        pass('错误答案被正确拒绝（GCM 认证失败）');
+        const plaintext = decryptData(letter.salt, letter.data, answer);
+        payload = JSON.parse(plaintext);
+      } catch (e) {
+        fail(`[${tag}] 真实收信码解密失败（加密参数或答案不同步）: ${e.message}`);
+        continue;
+      }
+      if (typeof payload !== 'object' || payload === null) {
+        fail(`[${tag}] 解密成功但 payload 非法`);
+        continue;
+      }
+      const hasContent = !!payload.text ||
+        (Array.isArray(payload.images) && payload.images.length > 0) ||
+        (Array.isArray(payload.videos) && payload.videos.length > 0);
+      if (!hasContent) {
+        fail(`[${tag}] 解密出的额外内容为空（text/images/videos 全空）`);
+        continue;
+      }
+      pass(`[${tag}] 真实收信码解密成功，payload 合法`);
+
+      // 答对后可见的 secret 媒体路径也校验
+      for (const rel of [...(payload.images || []), ...(payload.videos || [])]) {
+        checkMediaPath(rel, tracked);
+      }
+
+      // 错误收信码拒绝测试（密码学原语对每条相同，测一次即可）
+      if (!wrongTestDone) {
+        wrongTestDone = true;
+        try {
+          decryptData(letter.salt, letter.data, WRONG_ANSWER);
+          fail(`[${tag}] 错误收信码竟然解密成功 —— 拒绝逻辑失效！`);
+        } catch {
+          pass('错误收信码被正确拒绝（GCM 认证失败）');
+        }
       }
     }
   }
@@ -595,8 +653,11 @@ async function main() {
   section('浏览器流程（测试二）');
   await checkBrowserFlow(data, configById);
 
-  section('统一入口 · 密码路由');
-  await checkUnifiedRouting(data, configById);
+  section('一码多信 · 同一二维码多收件人');
+  await checkMultiLetterRouting(data, configById);
+
+  section('裸地址 · 无 ?id= 提示');
+  await checkNoEntryFallback(data);
 
   section('Lightbox 图片放大预览');
   await checkLightbox(data);
