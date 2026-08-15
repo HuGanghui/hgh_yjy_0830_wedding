@@ -17,8 +17,7 @@
 //      桌面退回 <a download> 直链；手机端无分享能力（微信内置浏览器等）提示长按保存、不触发下载。
 //   9. 一码多信（jsdom，测试二内）：同一二维码（?id=A-05）→ 公开区直接渲染；输入错误
 //      收信码被拒；输入不同收信码分别路由到不同专属信件（demo：A-05 花花/梁雪/小童 三码三信）。
-//   10. 动效冒烟（jsdom，测试二内）：扫码进页 #petals 生成花瓣；答对解锁触发礼花
-//      （#confetti 标记 data-fired）；错误收信码不触发。jsdom 无 canvas 2D，绘制自动跳过。
+//   10. 动效冒烟（jsdom，测试二内）：扫码进页 #petals 生成花瓣飘落，且不影响解锁流程。
 //
 // 安全约定：只输出 pass/fail，绝不打印答案、绝不打印解密后的明文内容。任一失败 → 非 0 退出。
 
@@ -512,10 +511,9 @@ async function checkDownloadImage(data) {
   }
 }
 
-// ── 动效冒烟：花瓣飘落 + 解锁礼花（浏览器流程的一部分） ────
-// 扫码进页 → #petals 生成花瓣；错误收信码不触发礼花；答对 → 专属信件出现且 #confetti 标记 fired。
-// jsdom 无 canvas 2D（getContext 返回 null），fireConfetti 自动跳过绘制，data-fired 作触发断言点。
-async function checkAmbienceEffects(data, configById) {
+// ── 动效冒烟：花瓣飘落（浏览器流程的一部分） ────
+// 扫码进页 → #petals 生成花瓣；花瓣容器 pointer-events 不挡交互（纯装饰）。
+async function checkPetalsEffect(data, configById) {
   const gatedId = Object.keys(data).find(id =>
     data[id] && Array.isArray(data[id].letters) && data[id].letters.length > 0);
   if (!gatedId) { pass('动效: 当前数据无门禁条目，跳过'); return; }
@@ -533,28 +531,14 @@ async function checkAmbienceEffects(data, configById) {
     const petalCount = doc.getElementById('petals').children.length;
     if (petalCount === 0) { fail('动效: 进页后未生成花瓣'); return; }
     pass(`动效: 进页生成 ${petalCount} 片花瓣飘落`);
-    if (!doc.getElementById('confetti')) { fail('动效: 缺少礼花 canvas'); return; }
-    pass('动效: 礼花 canvas 就位');
 
-    // ② 错误收信码 → 不触发礼花
-    doc.getElementById('answer-input').value = WRONG_ANSWER;
-    doc.getElementById('unlock-btn').click();
-    await waitFor(win, () => /答案不正确/.test(doc.getElementById('error-msg').textContent));
-    if (doc.getElementById('confetti').dataset.fired === '1') {
-      fail('动效: 错误收信码竟触发了礼花'); return;
-    }
-    pass('动效: 错误收信码不触发礼花');
-
-    // ③ 答对 → 专属信件出现 + 触发礼花（data-fired）
+    // ② 花瓣存在时解锁流程不受影响（容器 pointer-events:none，纯装饰）
     doc.getElementById('answer-input').value = answer;
     doc.getElementById('unlock-btn').click();
     if (!await waitFor(win, () => doc.getElementById('letter').classList.contains('active'))) {
-      fail('动效: 答对后专属信件未出现'); return;
+      fail('动效: 有花瓣时答对未解锁'); return;
     }
-    if (doc.getElementById('confetti').dataset.fired !== '1') {
-      fail('动效: 答对后未触发礼花'); return;
-    }
-    pass('动效: 答对解锁即触发礼花庆祝');
+    pass('动效: 花瓣存在时解锁流程正常');
   } finally {
     dom.window.close();
   }
@@ -707,8 +691,8 @@ async function main() {
   section('图片下载');
   await checkDownloadImage(data);
 
-  section('动效 · 花瓣飘落 + 解锁礼花');
-  await checkAmbienceEffects(data, configById);
+  section('动效 · 花瓣飘落');
+  await checkPetalsEffect(data, configById);
 
   section('总结');
   console.log(`共 ${checks} 项检查，失败 ${failures} 项`);
