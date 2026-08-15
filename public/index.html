@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="robots" content="noindex, nofollow">
 <title></title>
+<link rel="preload" as="fetch" href="data.json" crossorigin>
 <style>
   /* ── Reset & Base ──────────────────────────── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -74,6 +75,9 @@
     text-align: center;
     margin-bottom: 18px;
   }
+  .photo-wrap picture {
+    display: block;
+  }
   .photo-wrap img {
     width: 100%;
     max-height: 420px;
@@ -81,6 +85,8 @@
     border-radius: var(--radius);
     box-shadow: var(--shadow);
     display: block;
+    /* 加载占位：aspect-ratio 由 JS 按照片实际比例设置，避免图片到达时布局跳动 */
+    background: var(--border);
   }
 
   .description {
@@ -268,7 +274,9 @@
   <!-- ═══ Public: 照片 + 描述 + 问题（无需答题即可见） ═══ -->
   <div id="public" class="public">
     <div id="photo-wrap" class="photo-wrap" style="display:none">
-      <img id="public-photo" alt="照片">
+      <picture>
+        <img id="public-photo" alt="照片">
+      </picture>
     </div>
     <p class="description" id="description"></p>
 
@@ -412,7 +420,7 @@
 
   // ── 渲染公开区（无加密环节，直接可见） ───────
   if (entry.photo) {
-    $photo.src = entry.photo;
+    renderPublicPhoto(entry.photo, entry.photoW, entry.photoH);
     $photoWrap.style.display = 'block';
   }
   $description.textContent = entry.description || '';
@@ -432,6 +440,33 @@
   $loading.style.display = 'none';
   $public.classList.add('active');
   if (isGated) $answer.focus();
+
+  // ── 公开照片渲染：<picture> + srcset 按屏幕选档 ──
+  // 位图照片构建时生成了 480/960/1600 三档的 AVIF/WebP/JPEG（photo/<base>.jpg 是 1600px 回退档），
+  // 这里拼 <source type=image/avif|webp> 与 <img srcset>；SVG 等非位图直接 <img src>。
+  function renderPublicPhoto(src, w, h) {
+    $photo.src = src;  // 默认/回退（SVG 等非位图直接显示）
+    const isRaster = /\.(jpe?g|png|webp|avif)$/i.test(src);
+    if (!isRaster) return;
+
+    const base = src.replace(/\.(jpe?g|png|webp|avif)$/i, '');
+    $photo.sizes = '(min-width: 472px) 384px, (min-width: 401px) calc(100vw - 88px), calc(100vw - 68px)';
+    $photo.srcset = `${base}-480.jpg 480w, ${base}-960.jpg 960w, ${src} 1600w`;
+    $photo.fetchPriority = 'high';  // 首屏主照片优先加载
+    $photo.decoding = 'async';
+
+    for (const [type, srcset] of [
+      ['image/webp', `${base}-480.webp 480w, ${base}-960.webp 960w, ${base}-1600.webp 1600w`],
+      ['image/avif', `${base}-480.avif 480w, ${base}-960.avif 960w, ${base}-1600.avif 1600w`],
+    ]) {
+      const s = document.createElement('source');
+      s.type = type;
+      s.srcset = srcset;
+      $photo.insertAdjacentElement('beforebegin', s);  // img 在 <picture> 内，source 也进 <picture>
+    }
+
+    if (w && h) $photo.style.aspectRatio = `${w} / ${h}`;  // 占位，防加载时布局跳动
+  }
 
   // ── Helper: base64 → Uint8Array ──────────────
   function base64ToBytes(b64) {

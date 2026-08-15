@@ -58,7 +58,9 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
     "to": "收件人",
     "question": "问题",
     "description": "公开描述文字",
-    "photo": "media/<id>/photo/xxx.svg",
+    "photo": "media/<id>/photo/xxx.jpg",   // 位图照片为 1600px 回退档；SVG 照片原样
+    "photoW": 1600,   // 可选：输出照片宽高（页面据此占位，防加载时布局跳动）
+    "photoH": 2133,
     "salt": "Base64 的 16 字节随机盐",
     "data": "Base64 的 [iv(12) || GCM密文 || authTag(16)]"
   }
@@ -73,7 +75,8 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 
 **关键点：**
 - 媒体由 `build.js` 的 `copyMedia()` 拷贝到 `public/media/<id>/`：公开照片放 `photo/`（保留原文件名），secret 图片/视频放 `secret/`（文件名随机：`crypto.randomBytes(16).toString('hex')` + 扩展名）。data.json 只存路径。**每次构建会先清空整个 `public/media/` 和 `qrcodes/`**，保证产物与 config 严格一致、不残留旧文件（避免过期 QR 码被误发）。
-- **照片自动优化**：位图照片（jpg/jpeg/png/webp/heic 等）构建时经 `sharp` 缩放至 1600px 宽并重压缩为 JPEG（质量 82），带透明通道的压平到白底；视频与 SVG 原样拷贝；优化失败自动回退原样拷贝。相机原图动辄 5-11MB，优化后通常几十~几百 KB（42 张共约 10MB）。源文件在 `assets/` 不受影响。
+- **照片自动优化（响应式）**：位图照片（jpg/jpeg/png/webp/heic 等）构建时经 `sharp` 摆正（EXIF）并生成 **480/960/1600 三档 × AVIF(q45)/WebP(q80)/JPEG(q75 渐进)**，带透明通道的压平到白底；`photo/<base>.jpg` 是 1600px 回退档。页面 `index.html` 用 `<picture>`+`srcset>` 按屏幕/DPR 选档，手机端只下载 ~60-220KB（实测最重的照片从 584KB 降到 WebP 216KB / AVIF 86KB）。secret 图片答对后才显示，保持单档 JPEG。视频与 SVG 原样拷贝；优化失败自动回退原样拷贝。相机原图动辄 5-11MB。源文件在 `assets/` 不受影响。
+  - ⚠️ 变体文件名约定：`photo/<base>-480|960|1600.(jpg|webp|avif)`，`index.html` 据此拼 URL，`scripts/verify.js` 会校验变体齐全（改约定要两边同步）。
 - secret 的 `text` 加密进 `data` 字段；公开字段（`to`/`question`/`description`/`photo`）为明文。`to` **可选**：无特定收件人的照片可省略，页面不显示「To 某人」标签（`build.js` 与 `index.html` 均已适配）。
 - **有无 `to` 决定是否为解锁条目**：有 `to` → 必有 `question`/`answer`/`secret`，额外内容加密（`build.js` 校验并加密）；无 `to` → 仅照片+描述，`question`/`answer`/`secret` 被忽略并告警，不产出 `salt`/`data`。
 - **secret 媒体是 `public/` 下可直链的静态文件**——路径随机只是防枚举的缓解，不是真正的机密性（用户已接受该取舍）。⚠️ **仓库已公开**（GitHub Pages 免费方案要求公开仓库）：`public/media/<id>/secret/` 里的 secret 文件，任何人可直接浏览仓库下载——随机名只防「猜 URL」，不防「逛仓库」（`assets/` 源文件已 gitignore、不入库）。用户已知悉并选择接受（曾考虑媒体加密方案，暂缓）。若日后要真保密，改走「build 加密媒体 + 浏览器解密」方案。图片/视频加载用 `<img>` / `<video controls preload="metadata">` 直链，**已无 Blob URL 逻辑**。

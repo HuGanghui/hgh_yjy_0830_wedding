@@ -85,6 +85,29 @@ function checkMediaPath(rel, tracked) {
   }
 }
 
+// 位图公开照片的响应式变体校验：build 会为每张位图照片生成 480/960/1600 档的
+// AVIF/WebP/JPEG（见 build.js），这里逐一确认磁盘上存在，防止漏构建导致图片 404。
+function checkPhotoVariants(photoRel) {
+  const m = /^(.+)\.(jpe?g|png|webp|avif)$/i.exec(photoRel);
+  if (!m) return;  // SVG 等非位图：不生成变体
+  const base = m[1];
+  const expects = [
+    ...['jpg', 'webp', 'avif'].map(f => `${base}-480.${f}`),
+    ...['jpg', 'webp', 'avif'].map(f => `${base}-960.${f}`),
+    ...['webp', 'avif'].map(f => `${base}-1600.${f}`),
+  ];
+  for (const rel of expects) {
+    const p = path.join('public', rel);
+    const dir = path.dirname(p);
+    const baseName = path.basename(p);
+    if (fs.existsSync(dir) && fs.readdirSync(dir).includes(baseName)) {
+      pass(`响应式变体存在: ${rel}`);
+    } else {
+      fail(`响应式变体缺失: ${rel}（未重新 npm run build？）`);
+    }
+  }
+}
+
 // ── QR 码：完整性 + 内容解码（测试三） ─────────────────────
 async function checkQRCodes(config) {
   const ids = config
@@ -255,8 +278,11 @@ async function main() {
       continue;
     }
 
-    // 媒体路径（photo 必查）
-    if (entry.photo) checkMediaPath(entry.photo, tracked);
+    // 媒体路径（photo 必查）+ 位图照片的响应式变体齐全
+    if (entry.photo) {
+      checkMediaPath(entry.photo, tracked);
+      checkPhotoVariants(entry.photo);
+    }
 
     // 无收件人条目：仅公开内容，无解密环节
     if (!entry.data) {

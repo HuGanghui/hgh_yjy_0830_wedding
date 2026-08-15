@@ -7,8 +7,13 @@ const sharp = require('sharp');
 // ── 图片优化参数 ─────────────────────────────────────
 // 页面里照片最宽约 440px（max-width 440px 卡片），1600px 已覆盖 3x 视网膜屏，绰绰有余。
 // 相机原图动辄 4000-6000px、5-11MB，直接上线手机要下载很久 —— 这里统一缩放+压缩。
-const MAX_PHOTO_WIDTH = 1600;  // 只缩小不放大
-const JPEG_QUALITY = 82;       // 肉眼几乎无损，体积减 95%+
+// 公开照片额外生成 480/960/1600 三档 × AVIF/WebP/JPEG，页面用 <picture>/srcset 按屏幕选档：
+// 手机端只需下载 ~60-220KB，而不是整张 1600px（实测最大照片从 584KB 降到 WebP 216KB / AVIF 86KB）。
+const MAX_PHOTO_WIDTH = 1600;          // 只缩小不放大（photo/<base>.jpg 回退档）
+const PHOTO_SIZES = [480, 960, 1600];  // 响应式档位
+const JPEG_QUALITY = 75;               // 渐进式 + 适度压缩，肉眼差别极小，体积更小
+const WEBP_QUALITY = 72;               // 较 mozjpeg q75 的 JPEG 再省 ~5%（q80 反而比 JPEG 大，已实测调低）
+const AVIF_QUALITY = 45;               // 较 JPEG 再省 ~50-65%（Safari 16.4+ 及现代浏览器）
 const RASTER_EXTS = new Set([
   '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.bmp', '.tif', '.tiff', '.avif'
 ]);
@@ -33,22 +38,44 @@ async function copyMedia(srcPath, id, folder) {
   fs.mkdirSync(outDir, { recursive: true });
 
   let dest;
+  let outDims = null;   // 公开照片的输出尺寸（页面占位用）
   if (RASTER_EXTS.has(ext)) {
-    // 位图：缩放 + 重压缩
+    // 位图：缩放 + 重压缩（公开照片多尺寸多格式；secret 单档）
     const baseName = folder === 'photo'
       ? path.basename(srcPath, path.extname(srcPath))
       : randomFileName();
     try {
       const meta = await sharp(absSrc, { failOn: 'none' }).metadata();
       const hasAlpha = meta.channels === 4;
-      dest = path.join(outDir, `${baseName}.jpg`);
-      let img = sharp(absSrc, { failOn: 'none' })
-        .rotate()  // 按 EXIF 方向摆正（手机照片常见）
-        .resize({ width: MAX_PHOTO_WIDTH, withoutEnlargement: true });
-      // 带 alpha 的照片多为导出残留（实测半透明像素≈254，压平前后视觉无差异），压平到卡片白底再压 JPEG
-      if (hasAlpha) img = img.flatten({ background: '#ffffff' });
-      const buf = await img.jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
-      fs.writeFileSync(dest, buf);
+      // 统一管线：EXIF 摆正 + 可选压平到卡片白底；每个变体从这里 clone 再 resize
+      let pipe = sharp(absSrc, { failOn: 'none' }).rotate();
+      if (hasAlpha) pipe = pipe.flatten({ background: '#ffffff' });
+
+      const JPEG = { quality: JPEG_QUALITY, mozjpeg: true, progressive: true };
+      const render = (w, fmt, opts) =>
+        pipe.clone().resize({ width: w, withoutEnlargement: true })[fmt](opts).toBuffer();
+
+      if (folder === 'photo') {
+        // ── 公开照片：480/960/1600 × AVIF/WebP/JPEG（photo/<base>.jpg 是 1600px 回退档） ──
+        const buf1600 = await render(MAX_PHOTO_WIDTH, 'jpeg', JPEG);
+        dest = path.join(outDir, `${baseName}.jpg`);
+        fs.writeFileSync(dest, buf1600);
+        await Promise.all([
+          render(480, 'jpeg', JPEG).then(b => fs.writeFileSync(path.join(outDir, `${baseName}-480.jpg`), b)),
+          render(960, 'jpeg', JPEG).then(b => fs.writeFileSync(path.join(outDir, `${baseName}-960.jpg`), b)),
+          ...PHOTO_SIZES.map(w => render(w, 'webp', { quality: WEBP_QUALITY })
+            .then(b => fs.writeFileSync(path.join(outDir, `${baseName}-${w}.webp`), b))),
+          ...PHOTO_SIZES.map(w => render(w, 'avif', { quality: AVIF_QUALITY })
+            .then(b => fs.writeFileSync(path.join(outDir, `${baseName}-${w}.avif`), b))),
+        ]);
+        const dims = await sharp(buf1600).metadata();  // 输出尺寸 → data.json，页面占位防布局跳动
+        outDims = { width: dims.width, height: dims.height };
+      } else {
+        // ── secret 图片：答对后才显示，单档即可 ──
+        const buf = await render(MAX_PHOTO_WIDTH, 'jpeg', JPEG);
+        dest = path.join(outDir, `${baseName}.jpg`);
+        fs.writeFileSync(dest, buf);
+      }
     } catch (err) {
       dest = path.join(outDir, path.basename(srcPath));
       fs.copyFileSync(absSrc, dest);
@@ -65,7 +92,7 @@ async function copyMedia(srcPath, id, folder) {
 
   const sizeKB = (fs.statSync(dest).size / 1024).toFixed(1);
   const url = path.posix.join('media', id, folder, path.basename(dest));
-  return { url, sizeKB };
+  return { url, sizeKB, ...outDims };
 }
 
 async function main() {
@@ -104,10 +131,13 @@ async function main() {
 
     // ── 公开照片（直接可见，保留原文件名） ──
     let photoUrl = null;
+    let photoW = null, photoH = null;
     if (photo) {
       try {
         const r = await copyMedia(photo, id, 'photo');
         photoUrl = r.url;
+        photoW = r.width ?? null;
+        photoH = r.height ?? null;
         console.log(`  🖼️  [${id}] 公开照片: ${r.url} (${r.sizeKB} KB)`);
       } catch (err) {
         errors.push(`[${id}] 公开照片 ${photo}: ${err.message}`);
@@ -177,6 +207,7 @@ async function main() {
         question,
         description,
         photo: photoUrl,
+        ...(photoW ? { photoW, photoH } : {}),
         salt: salt.toString('base64'),
         data: combined.toString('base64'),
         to
@@ -186,7 +217,7 @@ async function main() {
       if (question || answer || secret) {
         errors.push(`[${id}] 无收件人条目仅展示照片+描述，已忽略 question/answer/secret`);
       }
-      outEntry = { description, photo: photoUrl };
+      outEntry = { description, photo: photoUrl, ...(photoW ? { photoW, photoH } : {}) };
     }
     output[id] = outEntry;
 
