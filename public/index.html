@@ -337,6 +337,23 @@
   }
   .lightbox-download svg { width: 16px; height: 16px; }
   .lightbox-download:active { background: rgba(255, 255, 255, 0.3); }
+  .download-hint {
+    position: fixed;
+    bottom: max(28px, env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1002;
+    background: rgba(0, 0, 0, 0.78);
+    color: #fff;
+    font-size: 0.85rem;
+    padding: 10px 18px;
+    border-radius: 999px;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.25s;
+    pointer-events: none;
+  }
+  .download-hint.show { opacity: 1; }
   body.lightbox-open { overflow: hidden; }   /* 预览时锁定背景滚动 */
 </style>
 </head>
@@ -764,38 +781,63 @@
   }
 
   // ── 下载图片（重点适配手机端） ──
-  // 手机端浏览器不支持 <a download>（尤其 iOS Safari），优先走 Web Share API Level 2：
-  // 分享/存储原图（可存相册）；不可用时退回 <a download>（Android/桌面）；再退回新标签打开（长按可存）。
+  // 微信内置浏览器会拦截一切网页下载（连 <a download> 也拦，只弹「请在浏览器打开」），
+  // 但允许长按图片保存。因此策略：① 手机端优先原生分享（Web Share API Level 2，可存相册）；
+  // ② 桌面用 <a download> 直链下载；③ 手机端无分享能力（微信等）→ 提示长按图片保存。
+  function fileName(src) {
+    return (src.split('/').pop() || 'photo.jpg').split('?')[0];
+  }
+
   async function downloadImage(src) {
-    let blob = null, name = null;
-    try {
-      const resp = await fetch(src);   // 同源静态文件，直接拉 Blob
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      blob = await resp.blob();
-      name = (src.split('/').pop() || 'photo.jpg').split('?')[0];
-    } catch (err) {
-      window.open(src, '_blank', 'noopener');   // 拉取失败：新标签看原图，长按保存
-      return;
-    }
-    const file = new File([blob], name, { type: blob.type || 'image/jpeg' });
-    if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+    const name = fileName(src);
+    const isFinePointer = window.matchMedia && window.matchMedia('(pointer: fine)').matches;
+
+    // ① 手机端：先试原生分享（存相册 / 隔空投送 / 发消息）
+    if (!isFinePointer) {
+      let file = null;
       try {
-        await navigator.share({ files: [file] });   // 用户选择存相册/隔空投送/发消息等
-      } catch (err) { /* 用户取消分享，不做多余动作 */ }
+        const resp = await fetch(src);   // 同源静态文件，直接拉 Blob
+        if (resp.ok) {
+          const blob = await resp.blob();
+          file = new File([blob], name, { type: blob.type || 'image/jpeg' });
+        }
+      } catch (err) { /* 拉取失败，file 保持 null，走下方长按提示 */ }
+
+      if (file && navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file] }); }   // 用户选择存相册/隔空投送/发消息等
+        catch (err) { /* 用户取消分享，不做多余动作 */ }
+        return;
+      }
+      // ③ 手机端无分享能力（微信内置浏览器等）：直接下载会被拦，长按图片保存最稳
+      showDownloadHint();
       return;
     }
+
+    // ② 桌面（鼠标/触控板）：<a download> 直链同源原图，无需 fetch
     try {
-      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
+      a.href = src;
       a.download = name;
+      a.rel = 'noopener';
       document.body.appendChild(a);
       a.click();
       a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
-    } catch (err) {
-      window.open(src, '_blank', 'noopener');   // 极旧浏览器兜底
+    } catch (err) { /* 忽略 */ }
+  }
+
+  // 轻提示：长按保存（图片就在 lightbox 里，长按即可存相册）
+  let $hint = null, hintTimer = null;
+  function showDownloadHint() {
+    if (!$hint) {
+      $hint = document.createElement('div');
+      $hint.id = 'download-hint';
+      $hint.className = 'download-hint';
+      document.body.appendChild($hint);
     }
+    $hint.textContent = '长按图片即可保存到相册';
+    $hint.classList.add('show');
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => $hint.classList.remove('show'), 2600);
   }
 
   $lbImg.addEventListener('load', lbUpdateFit);

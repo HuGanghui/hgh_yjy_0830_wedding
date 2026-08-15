@@ -13,8 +13,8 @@
 //      ⚠️ Node 端解密查不出 index.html 自身代码被改坏（参数/流程），这段专门抓它。
 //   7. Lightbox 图片放大预览（jsdom，测试二内）：点照片打开预览、图内点按放大/还原、
 //      点背景/Esc/✕ 关闭 —— 逐项断言，防止 index.html 的交互代码被改坏。
-//   8. 图片下载（jsdom，测试二内）：lightbox 点「下载」——手机端走 navigator.share(文件)，
-//      桌面/Android 退回 <a download>，逐路径断言。
+//   8. 图片下载（jsdom，测试二内）：lightbox 点「下载」——手机端走 navigator.share(文件)；
+//      桌面退回 <a download> 直链；手机端无分享能力（微信内置浏览器等）提示长按保存、不触发下载。
 //
 // 安全约定：只输出 pass/fail，绝不打印答案、绝不打印解密后的明文内容。任一失败 → 非 0 退出。
 
@@ -310,8 +310,9 @@ async function checkLightbox(data) {
 }
 
 // ── 图片下载（浏览器流程的一部分） ────────────────────
-// lightbox 里的「下载」按钮：fetch 原图 → Blob → ① 手机端 navigator.share(文件)（可存相册）
-// ② 桌面/Android 退回 <a download>（createObjectURL）。jsdom 里打桩 fetch/URL/canShare 分别断言。
+// lightbox 里的「下载」按钮三条路径：① 手机端 navigator.share(文件)（可存相册）
+// ② 桌面 <a download> 直链 ③ 手机端无分享能力（微信内置浏览器等）→ 提示长按保存，绝不触发下载
+// （微信拦截一切下载）。jsdom 里打桩 fetch/canShare/matchMedia，分别断言。
 async function checkDownloadImage(data) {
   const photoId = Object.keys(data).find(id => data[id] && data[id].photo);
   if (!photoId) { pass('下载: 当前数据无照片条目，跳过'); return; }
@@ -330,38 +331,52 @@ async function checkDownloadImage(data) {
     if (!$dl) { fail('下载: 缺少下载按钮'); return; }
     pass('下载: lightbox 内有下载按钮');
 
-    // 打桩：图片 fetch 喂 Blob；URL.createObjectURL / window.open 记录调用
+    // 打桩：图片 fetch 喂 Blob
     const blobFor = new win.Blob(['fake-image'], { type: 'image/jpeg' });
-    const created = [];
-    win.URL.createObjectURL = (b) => { created.push(b); return 'blob:mock'; };
     win.fetch = async () => ({ ok: true, status: 200, blob: async () => blobFor });
-    win.open = () => {};
 
     $photo.click();   // 打开 lightbox
     if (!$lb.classList.contains('open')) { fail('下载: lightbox 未打开'); return; }
 
-    // ① 手机端：canShare 支持 → 走 navigator.share，携带图片文件
+    // ① 手机端 + 支持分享 → 走 navigator.share，携带图片文件
+    win.matchMedia = () => ({ matches: false });   // 触屏设备（非 fine pointer）
     let shared = null;
     Object.defineProperty(win.navigator, 'canShare', { value: () => true, configurable: true });
     Object.defineProperty(win.navigator, 'share', { value: async (payload) => { shared = payload; }, configurable: true });
-
     $dl.click();
-    const sharedDone = await waitFor(win, () => shared !== null);
-    if (!sharedDone) { fail('下载: 手机端分享未触发'); return; }
-    if (!shared || !shared.files || shared.files.length !== 1) {
-      fail('下载: 分享未携带图片文件'); return;
-    }
+    if (!await waitFor(win, () => shared !== null)) { fail('下载: 手机端分享未触发'); return; }
+    if (!shared.files || shared.files.length !== 1) { fail('下载: 分享未携带图片文件'); return; }
     if (!(shared.files[0] instanceof win.File)) { fail('下载: 分享文件不是 File 类型'); return; }
     pass('下载: 手机端优先走分享（携带图片文件）');
 
-    // ② 桌面/Android：canShare 不支持 → 走 <a download>（createObjectURL 被调用）
-    const before = created.length;
+    // ② 桌面（fine pointer）→ <a download> 直链下载
+    win.matchMedia = () => ({ matches: true });
     Object.defineProperty(win.navigator, 'canShare', { value: () => false, configurable: true });
+    let anchor = null;
+    const origClick = win.HTMLAnchorElement.prototype.click;
+    win.HTMLAnchorElement.prototype.click = function () {
+      if (this.hasAttribute('download')) anchor = { href: this.href, download: this.getAttribute('download') };
+      return origClick.call(this);
+    };
     $dl.click();
-    const objDone = await waitFor(win, () => created.length > before);
-    if (!objDone) { fail('下载: 桌面路径未走 createObjectURL'); return; }
-    if (!(created[created.length - 1] instanceof win.Blob)) { fail('下载: createObjectURL 参数不是 Blob'); return; }
-    pass('下载: 桌面/Android 走 <a download> 下载');
+    if (!await waitFor(win, () => anchor !== null)) { fail('下载: 桌面未触发 <a download>'); return; }
+    if (!/\.(jpe?g|png|webp|avif|svg)$/i.test(anchor.download)) {
+      fail(`下载: 下载文件名不对 → ${anchor.download}`); return;
+    }
+    pass(`下载: 桌面走 <a download> 直链下载（${anchor.download}）`);
+
+    // ③ 手机端但无分享能力（微信内置浏览器等）→ 提示长按保存，不触发任何下载
+    win.matchMedia = () => ({ matches: false });
+    Object.defineProperty(win.navigator, 'canShare', { value: () => false, configurable: true });
+    anchor = null;   // 重置 ② 的下载锚点，确认 ③ 不再触发下载
+    $dl.click();
+    const hintShown = await waitFor(win, () => {
+      const el = doc.getElementById('download-hint');
+      return el && el.classList.contains('show');
+    });
+    if (!hintShown) { fail('下载: 手机端无分享能力时未提示长按保存'); return; }
+    if (anchor) { fail('下载: 微信场景误触发了 <a download>'); return; }
+    pass('下载: 手机端无分享能力时提示长按保存（不触发下载）');
   } finally {
     dom.window.close();
   }
