@@ -62,8 +62,8 @@
     width: 56px;
     height: 56px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #eef3ef, #e3ece5);
-    font-size: 28px;
+    background: linear-gradient(135deg, #fdeeee, #f8dcd8);
+    border: 1px solid #f0c6c3;
   }
 
   /* ── Public content ────────────────────────── */
@@ -274,7 +274,63 @@
 
     <div class="question-block">
       <div class="icon-wrap">
-        <span class="envelope-icon">✉️</span>
+        <span class="envelope-icon" aria-hidden="true">
+          <svg viewBox="0 0 120 92" width="54" height="41" focusable="false">
+            <defs>
+              <linearGradient id="envBody" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#ffffff"/>
+                <stop offset="1" stop-color="#f3eee5"/>
+              </linearGradient>
+              <linearGradient id="envFlap" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#ffffff"/>
+                <stop offset="1" stop-color="#faf6ee"/>
+              </linearGradient>
+              <linearGradient id="envHeart" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#f2545f"/>
+                <stop offset="1" stop-color="#d22630"/>
+              </linearGradient>
+              <filter id="envBlur2" x="-40%" y="-40%" width="180%" height="180%">
+                <feGaussianBlur stdDeviation="2"/>
+              </filter>
+              <filter id="envBlur4" x="-40%" y="-40%" width="180%" height="180%">
+                <feGaussianBlur stdDeviation="4"/>
+              </filter>
+              <clipPath id="envClip">
+                <rect x="8" y="8" width="104" height="74" rx="5"/>
+              </clipPath>
+            </defs>
+
+            <!-- 柔和投影 -->
+            <rect x="9" y="11" width="104" height="74" rx="5" fill="#00000012" filter="url(#envBlur2)"/>
+            <rect x="8" y="9" width="104" height="74" rx="5" fill="#0000000c" filter="url(#envBlur2)"/>
+
+            <!-- 信封纸面 -->
+            <rect x="8" y="8" width="104" height="74" rx="5" fill="url(#envBody)" stroke="#dcd2c2" stroke-width="0.8"/>
+
+            <g clip-path="url(#envClip)">
+              <!-- 纸张光泽 -->
+              <path d="M8 -8 L46 -8 L112 58 L86 58 Z" fill="#ffffff" opacity="0.45" filter="url(#envBlur4)"/>
+              <!-- 底部内侧阴影 -->
+              <rect x="8" y="66" width="104" height="18" rx="5" fill="#0000000a" filter="url(#envBlur4)"/>
+            </g>
+
+            <!-- 翻盖落影 -->
+            <path d="M8 8 L60 38 L112 8" fill="none" stroke="#0000001c" stroke-width="4" filter="url(#envBlur2)" stroke-linejoin="round"/>
+
+            <!-- 顶部翻盖 -->
+            <path d="M8 8 L60 38 L112 8 Z" fill="url(#envFlap)"/>
+            <path d="M8 8 L60 38 L112 8" fill="none" stroke="#c9bfae" stroke-width="1" stroke-linejoin="round"/>
+
+            <!-- 顶边高光 -->
+            <path d="M8 9 H112" stroke="#ffffff" opacity="0.7" stroke-width="1"/>
+
+            <!-- 爱心（带光泽） -->
+            <g transform="translate(60 56) scale(0.55) translate(-12 -12.2)">
+              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="url(#envHeart)"/>
+              <ellipse cx="9" cy="6.5" rx="2.6" ry="1.8" fill="#ffffff" opacity="0.55" filter="url(#envBlur2)"/>
+            </g>
+          </svg>
+        </span>
       </div>
       <span class="to-label" id="to-label"></span>
       <p class="question" id="question"></p>
