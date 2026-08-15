@@ -15,9 +15,32 @@
       }
     },
     {
+      "id": "A-05",
+      "question": "请输入收信码，解锁您的专属信件",
+      "photo": "assets/A-05.jpg",
+      "description": "一码多信：同一张照片、同一个二维码，多人各自输入自己的收信码 → 各自的专属信件。",
+      "letters": [
+        {
+          "to": "花花",
+          "answer": "huahua-wedding-0830",
+          "secret": { "text": "致花花：这是只属于你的信件……" }
+        },
+        {
+          "to": "梁雪",
+          "answer": "liangxue-wedding-0830",
+          "secret": { "text": "致梁雪：这是只属于你的信件……" }
+        },
+        {
+          "to": "小童",
+          "answer": "xiaotong-wedding-0830",
+          "secret": { "text": "致小童：这是只属于你的信件……" }
+        }
+      ]
+    },
+    {
       "id": "no-recipient-photo",
       "photo": "assets/photo.jpg",
-      "description": "这张照片没有特定收件人，扫码直接看到照片和描述即可，无需答题。省略 to/question/answer/secret。"
+      "description": "这张照片没有特定收件人，扫码直接看到照片和描述即可，无需答题。省略 to/question/answer/secret/letters。"
     }
   ]
 }
