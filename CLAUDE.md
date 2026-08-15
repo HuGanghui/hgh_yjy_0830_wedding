@@ -4,7 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-QR 码加密解锁系统：每个条目生成一个 QR 码，指向 `public/index.html?id=<id>`。扫码后**直接看到**公开内容——照片 + 描述文字 + 一个「To 某人」的问题（无加密环节）；答对问题后浏览器本地解密，展示额外内容（一段话 / 图片 / 视频）。零服务器，纯静态，部署到 GitHub Pages。
+QR 码加密解锁系统，**两种入口**：
+- **① 个人链接（直开）**：每个条目生成一个 QR 码，指向 `public/index.html?id=<id>`。扫码后直接看到公开内容——照片 + 描述文字（无加密环节）；输入收信码答对后，浏览器本地解密并**跳转到专属信件视图**（「致 [to] + 正文 + 图片/视频 + 落款」的信件卡片）。
+- **② 统一入口（密码路由）**：直接访问 `public/index.html`（无 `?id=`）时，显示「请输入收信码」页。输入收信码后，用该码对**所有含 `data` 的门禁条目并行试解密**定位身份，自动跳转到对应人的专属信件。适合所有人扫同一个二维码。
+- 零服务器，纯静态，部署到 GitHub Pages。
 
 **答案本身就是解密密钥**——`config.json` 中的 `answer` 字段从不存储在任何输出里。只有**额外内容（secret）**经 PBKDF2 派生密钥 + AES-GCM 加密：正确答案认证通过才解密成功，错误答案被拒绝，因此没有「正确答案库」可被窃取。公开内容（照片 / 描述 / 问题）为明文。
 
@@ -15,7 +18,7 @@ QR 码加密解锁系统：每个条目生成一个 QR 码，指向 `public/inde
 - 任何修改、新增、删除文件，完成一个逻辑单元后立即 `git add` + `git commit`，不允许改动长期停留在工作区。
 - 提交前先 `git status` 和 `git diff`，确认只包含预期改动，绝不误提交 `config.json`（含答案/密钥）和 `qrcodes/`（QR 码）——见下方「Git 约定」。
 - 提交信息使用中文、动词开头的描述性写法（参考现有 commit 风格），例如 `feat: 新增视频内容支持`、`fix: 修复答案含中文空格时解密失败`。
-- **提交前自动自检**：仓库启用 pre-commit 钩子（`.githooks/pre-commit`，已提交入库）——暂存区涉及 `public/`（构建产物）/ `scripts/` / `.githooks/` 时，`git commit` 自动运行 `node scripts/verify.js`（① config↔data.json 条目互查 ② 真实答案解密校验 + 错误答案被拒 ③ 媒体路径磁盘/git 大小写校验 ④ QR 码 PNG 完整性 + jsqr 解码内容 ⑤ jsdom 跑真实 index.html 解锁流程冒烟 ⑥ Lightbox 图片放大预览 + 下载），任一失败**阻止提交**；纯文档提交自动跳过。⚠️ 该钩子靠 `git config core.hooksPath .githooks` 生效（配置不随克隆走），**新环境必须先执行这句**，否则钩子不生效。
+- **提交前自动自检**：仓库启用 pre-commit 钩子（`.githooks/pre-commit`，已提交入库）——暂存区涉及 `public/`（构建产物）/ `scripts/` / `.githooks/` 时，`git commit` 自动运行 `node scripts/verify.js`（① config↔data.json 条目互查 ② 真实答案解密校验 + 错误答案被拒 ③ 媒体路径磁盘/git 大小写校验 ④ QR 码 PNG 完整性 + jsqr 解码内容 ⑤ jsdom 跑真实 index.html 解锁流程冒烟 ⑥ Lightbox 图片放大预览 + 下载 ⑦ 统一入口密码路由（花花/梁雪/小童 三码三信）），任一失败**阻止提交**；纯文档提交自动跳过。⚠️ 该钩子靠 `git config core.hooksPath .githooks` 生效（配置不随克隆走），**新环境必须先执行这句**，否则钩子不生效。
 - **较大功能改动用测试兜底**：新增或修改功能（尤其是 `public/index.html` 里的交互/逻辑）时，必须同步在 `scripts/verify.js` 中补充对应的自检测试（如解锁流程、Lightbox 的 DOM 冒烟），与代码**一并提交**；仅纯文档或样式微调可豁免。新测试未过不得提交。
 
 ## 常用命令
@@ -24,7 +27,7 @@ QR 码加密解锁系统：每个条目生成一个 QR 码，指向 `public/inde
 npm install              # 安装依赖（qrcode + sharp；sharp 用于构建时照片缩放压缩）
 cp config.example.json config.json   # 首次创建配置
 npm run build            # 构建：读取 config.json → 生成 public/data.json + qrcodes/*.png
-npm run verify           # 提交前自检（pre-commit 自动跑）：条目一致性 + 解密链路 + 媒体路径 + QR 内容 + 浏览器流程（含图片放大预览/下载）
+npm run verify           # 提交前自检（pre-commit 自动跑）：条目一致性 + 解密链路 + 媒体路径 + QR 内容 + 浏览器流程（含图片放大预览/下载/统一入口密码路由）
 git config core.hooksPath .githooks  # 一次性设置：启用 pre-commit 钩子（新环境必跑）
 ```
 
@@ -81,7 +84,9 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 - secret 的 `text` 加密进 `data` 字段；公开字段（`to`/`question`/`description`/`photo`）为明文。`to` **可选**：无特定收件人的照片可省略，页面不显示「To 某人」标签（`build.js` 与 `index.html` 均已适配）。
 - **有无 `to` 决定是否为解锁条目**：有 `to` → 必有 `question`/`answer`/`secret`，额外内容加密（`build.js` 校验并加密）；无 `to` → 仅照片+描述，`question`/`answer`/`secret` 被忽略并告警，不产出 `salt`/`data`。
 - **secret 媒体是 `public/` 下可直链的静态文件**——路径随机只是防枚举的缓解，不是真正的机密性（用户已接受该取舍）。⚠️ **仓库已公开**（GitHub Pages 免费方案要求公开仓库）：`public/media/<id>/secret/` 里的 secret 文件，任何人可直接浏览仓库下载——随机名只防「猜 URL」，不防「逛仓库」（`assets/` 源文件已 gitignore、不入库）。用户已知悉并选择接受（曾考虑媒体加密方案，暂缓）。若日后要真保密，改走「build 加密媒体 + 浏览器解密」方案。图片/视频加载用 `<img>` / `<video controls preload="metadata">` 直链，**已无 Blob URL 逻辑**。
-- 解密入口在 `public/index.html` 的 IIFE 脚本：加载后先渲染公开区 → `base64ToBytes()` → PBKDF2 deriveKey → `crypto.subtle.decrypt` → JSON.parse → 渲染 `text/images/videos`。
+- 解密入口在 `public/index.html` 的 IIFE 脚本：加载后先渲染公开区 → `base64ToBytes()` → PBKDF2 deriveKey → `crypto.subtle.decrypt` → JSON.parse → 渲染 `text/images/videos`。统一入口（无 `?id=`）走 `initRouteMode()`：`Promise.all` 对每个含 `data` 的条目并行 `decryptPayload()`（失败返回 null），`findIndex(p => p!==null)` 定位身份 → 渲染对应专属信件。**不存储任何「正确答案库」**——密码即密钥，解密成功即认证。
+- ⚠️ **统一入口按密码路由 → 每个门禁条目的 `answer` 必须唯一**：同一密码命中多个条目会路由歧义（`scripts/verify.js` 会打印共享答案的 id 列表作提醒，不阻断）。
+- **专属信件视图**：答对 / 路由命中后 `renderLetter(entry, payload)`——隐藏公开区（照片/描述/输入），展示信件卡片：`致 [to]` + 正文（`white-space: pre-wrap`）+ secret 图片/视频 + 落款「来自新人的祝福」。图片继续走 Lightbox 放大预览 / 下载。
 - `public/index.html` 是零依赖单文件（原生 HTML/CSS/JS），移动端优先。
 - base64 用浏览器原生 `atob` / Node `Buffer`，注意 UTF-8 中文用 `TextEncoder`/`TextDecoder` 统一处理。
 

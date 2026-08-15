@@ -184,17 +184,58 @@
     80% { transform: translateX(4px); }
   }
 
-  /* ── Secret content (after correct answer) ── */
-  .secret { display: none; }
-  .secret.active { display: block; }
+  /* ── 统一入口（无 ?id= 时：输入收信码 → 路由到专属信件） ── */
+  .route-screen { display: none; }
+  .route-screen.active { display: block; }
+  .route-title {
+    text-align: center;
+    font-size: 1.08rem;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.7;
+    margin-bottom: 18px;
+  }
 
-  .secret .content-text {
+  /* ── 专属信件视图（答对 / 路由命中后展示） ── */
+  .letter { display: none; }
+  .letter.active { display: block; }
+  .letter-card {
+    position: relative;
+    background: linear-gradient(180deg, #fffdf8 0%, #fbf3e4 100%);
+    border: 1px solid #eadfc9;
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    padding: 28px 24px 24px;
+  }
+  .letter-card::before {   /* 顶部信封翻盖装饰线 */
+    content: "";
+    position: absolute;
+    top: 0; left: 16px; right: 16px;
+    height: 14px;
+    background: linear-gradient(180deg, #f2e2c0, rgba(242,226,192,0));
+    border-radius: 0 0 12px 12px;
+    opacity: 0.7;
+  }
+  .letter-head {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+    margin-bottom: 16px;
+  }
+  .letter-body {
     font-size: 1rem;
-    line-height: 1.9;
+    line-height: 2;
     color: var(--text);
     white-space: pre-wrap;
     word-break: break-word;
-    margin-bottom: 20px;
+    margin-bottom: 18px;
+  }
+  .letter-sign {
+    text-align: right;
+    font-size: 0.92rem;
+    color: var(--text-secondary);
+    margin-top: 6px;
   }
 
   .media {
@@ -352,6 +393,19 @@
     <p>加载中…</p>
   </div>
 
+  <!-- ═══ 统一入口：无 ?id= 时输入收信码 → 路由到专属信件 ═══ -->
+  <div id="route-screen" class="route-screen">
+    <div class="icon-wrap">
+      <span class="envelope-icon" aria-hidden="true" style="font-size:24px;line-height:1">✉</span>
+    </div>
+    <p class="route-title">请输入收信码<br>解锁您的专属信件</p>
+    <div class="input-group">
+      <input type="text" id="route-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="请输入收信码">
+      <button class="btn" id="route-btn">解 锁</button>
+    </div>
+    <p class="error-msg" id="route-error"></p>
+  </div>
+
   <!-- ═══ Public: 照片 + 描述 + 问题（无需答题即可见） ═══ -->
   <div id="public" class="public">
     <div id="photo-wrap" class="photo-wrap" style="display:none">
@@ -430,14 +484,15 @@
     <p class="error-msg" id="error-msg"></p>
   </div>
 
-  <!-- ═══ Secret: 答对后显示的额外内容 ═══ -->
-  <div id="secret" class="secret">
-    <div class="icon-wrap">
-      <span style="font-size:32px">✨</span>
+  <!-- ═══ 专属信件：答对 / 路由命中后展示 ═══ -->
+  <div id="letter" class="letter">
+    <div class="letter-card">
+      <div class="letter-head"><span aria-hidden="true">✉</span> 致 <span id="letter-to"></span></div>
+      <div class="letter-body" id="content-text"></div>
+      <div class="media" id="secret-images"></div>
+      <div class="media" id="secret-videos"></div>
+      <div class="letter-sign">—— 来自新人的祝福</div>
     </div>
-    <div class="content-text" id="content-text"></div>
-    <div class="media" id="secret-images"></div>
-    <div class="media" id="secret-videos"></div>
   </div>
 
   <!-- ═══ Error state ═══ -->
@@ -469,8 +524,13 @@
   // ── DOM refs ─────────────────────────────────
   const $loading      = document.getElementById('loading');
   const $public       = document.getElementById('public');
-  const $secret       = document.getElementById('secret');
+  const $letter       = document.getElementById('letter');
+  const $letterTo     = document.getElementById('letter-to');
   const $stateErr     = document.getElementById('state-error');
+  const $routeScreen  = document.getElementById('route-screen');
+  const $routeInput   = document.getElementById('route-input');
+  const $routeBtn     = document.getElementById('route-btn');
+  const $routeError   = document.getElementById('route-error');
   const $photoWrap    = document.getElementById('photo-wrap');
   const $photo        = document.getElementById('public-photo');
   const $description  = document.getElementById('description');
@@ -489,11 +549,6 @@
   const params = new URLSearchParams(window.location.search);
   const entryId = params.get('id');
 
-  if (!entryId) {
-    showStateError('缺少参数：请在 URL 中提供 ?id= 参数');
-    return;
-  }
-
   // ── Fetch encrypted data ─────────────────────
   let data;
   try {
@@ -505,33 +560,33 @@
     return;
   }
 
-  const entry = data[entryId];
-  if (!entry) {
-    showStateError('无效的链接：未找到对应内容');
-    return;
-  }
+  // 无 ?id=（或链接无效）→ 交给统一入口：输入收信码 → 路由到专属信件。
+  // 注意不能在这里 return：下方 Lightbox 等模块必须先初始化（统一入口成功后也要用）。
+  const entry = (entryId && data[entryId]) || null;
 
   // ── 渲染公开区（无加密环节，直接可见） ───────
-  if (entry.photo) {
-    renderPublicPhoto(entry.photo, entry.photoW, entry.photoH);
-    $photoWrap.style.display = 'block';
-  }
-  $description.textContent = entry.description || '';
+  if (entry) {
+    if (entry.photo) {
+      renderPublicPhoto(entry.photo, entry.photoW, entry.photoH);
+      $photoWrap.style.display = 'block';
+    }
+    $description.textContent = entry.description || '';
 
-  // 有 data 字段的条目才有解锁环节；无 to 的条目仅展示照片+描述
-  const isGated = !!entry.data;
-  if (isGated) {
-    $toLabel.textContent = entry.to ? `To ${entry.to}` : '';
-    $answer.placeholder = entry.question || '请输入答案';
-  } else {
-    $questionBlock.style.display = 'none';
-    $inputGroup.style.display = 'none';
-    $errorMsg.style.display = 'none';
-  }
+    // 有 data 字段的条目才有解锁环节；无 to 的条目仅展示照片+描述
+    const isGated = !!entry.data;
+    if (isGated) {
+      $toLabel.textContent = entry.to ? `To ${entry.to}` : '';
+      $answer.placeholder = entry.question || '请输入答案';
+    } else {
+      $questionBlock.style.display = 'none';
+      $inputGroup.style.display = 'none';
+      $errorMsg.style.display = 'none';
+    }
 
-  $loading.style.display = 'none';
-  $public.classList.add('active');
-  if (isGated) $answer.focus();
+    $loading.style.display = 'none';
+    $public.classList.add('active');
+    if (isGated) $answer.focus();
+  }
 
   // ── 公开照片渲染：<picture> + srcset 按屏幕选档 ──
   // 位图照片构建时生成了 480/960/1600 三档的 AVIF/WebP/JPEG（photo/<base>.jpg 是 1600px 回退档），
@@ -575,7 +630,27 @@
     return new TextEncoder().encode(str);
   }
 
-  // ── Unlock handler ───────────────────────────
+  // ── Helper: 用答案解密单个条目 → payload 或 null（答案错误 / 解析失败返回 null） ──
+  // 供「统一入口」并行试解密定位身份、以及「?id= 直开」解锁共用。
+  async function decryptPayload(entry, answer) {
+    try {
+      const salt = base64ToBytes(entry.salt);
+      const combined = base64ToBytes(entry.data);
+      const iv = combined.slice(0, 12);                 // 存储布局：iv(12) || 密文 || authTag(16)
+      const ciphertext = combined.slice(12);
+      const baseKey = await crypto.subtle.importKey(
+        'raw', strToBytes(answer), { name: 'PBKDF2' }, false, ['deriveKey']);
+      const aesKey = await crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+        baseKey, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+      const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ciphertext);
+      return JSON.parse(new TextDecoder().decode(plaintext));
+    } catch (err) {
+      return null;   // AES-GCM 认证失败（答案错误）或解析失败
+    }
+  }
+
+  // ── Unlock handler（?id= 直开模式） ───────────
   async function tryUnlock() {
     const answer = $answer.value.trim();
     if (!answer) {
@@ -583,57 +658,14 @@
       return;
     }
 
-    // Disable UI during decryption
     $unlockBtn.disabled = true;
     $unlockBtn.textContent = '验证中…';
     $errorMsg.textContent = '';
 
     try {
-      // Step 1: Decode stored data
-      const salt = base64ToBytes(entry.salt);
-      const combined = base64ToBytes(entry.data);
-
-      // Split: iv (12 bytes) | ciphertext+authTag
-      const iv = combined.slice(0, 12);
-      const ciphertext = combined.slice(12);
-
-      // Step 2: PBKDF2 key derivation (browser)
-      const answerBytes = strToBytes(answer);
-      const baseKey = await crypto.subtle.importKey(
-        'raw',
-        answerBytes,
-        { name: 'PBKDF2' },
-        false,
-        ['deriveKey']
-      );
-
-      const aesKey = await crypto.subtle.deriveKey(
-        {
-          name: 'PBKDF2',
-          salt: salt,
-          iterations: 100000,
-          hash: 'SHA-256'
-        },
-        baseKey,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['decrypt']
-      );
-
-      // Step 3: AES-GCM decryption
-      // Web Crypto expects ciphertext || authTag (last 16 bytes are auth tag)
-      const plaintext = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: iv },
-        aesKey,
-        ciphertext
-      );
-
-      // Step 4: Parse and render secret content
-      const decoder = new TextDecoder();
-      const json = JSON.parse(decoder.decode(plaintext));
-
-      showSecret(json);
-
+      const payload = await decryptPayload(entry, answer);
+      if (!payload) throw new Error('decrypt failed');
+      renderLetter(entry, payload);
     } catch (err) {
       // AES-GCM auth tag verification fails → wrong answer
       console.error('Decrypt failed:', err.name, err.message);
@@ -647,40 +679,86 @@
     }
   }
 
-  // ── Render secret content ────────────────────
-  // 媒体为 public/ 下的静态文件直链（图片 <img> / 视频 <video>）
-  function showSecret(payload) {
+  // ── 专属信件视图（答对 / 统一入口路由命中后统一渲染） ──
+  // 隐藏公开区（照片/描述/输入），跳到信件卡片：致[to] + 正文 + 图片/视频 + 落款。
+  function renderLetter(entry, payload) {
     $public.classList.remove('active');
+    if (entry && entry.to) $letterTo.textContent = entry.to;
+    if (payload && payload.text) $content.textContent = payload.text;
+    renderMedia($secretImages, payload.images, false);
+    renderMedia($secretVideos, payload.videos, true);
+    $letter.classList.add('active');
+    if ($letter.scrollIntoView) $letter.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
-    if (payload.text) {
-      $content.textContent = payload.text;
-    }
-
-    if (payload.images && payload.images.length > 0) {
-      $secretImages.innerHTML = '';
-      for (const src of payload.images) {
-        const img = document.createElement('img');
-        img.src = src;
-        img.alt = '照片';
-        img.loading = 'lazy';
-        img.addEventListener('click', () => openLightbox(img.currentSrc || img.src));
-        $secretImages.appendChild(img);
-      }
-    }
-
-    if (payload.videos && payload.videos.length > 0) {
-      $secretVideos.innerHTML = '';
-      for (const src of payload.videos) {
+  // 媒体为 public/ 下的静态文件直链（图片 <img> / 视频 <video>）
+  function renderMedia(container, items, isVideo) {
+    if (!items || items.length === 0) return;
+    container.innerHTML = '';
+    for (const src of items) {
+      if (isVideo) {
         const video = document.createElement('video');
         video.src = src;
         video.controls = true;
         video.playsInline = true;
         video.preload = 'metadata';
-        $secretVideos.appendChild(video);
+        container.appendChild(video);
+      } else {
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = '照片';
+        img.loading = 'lazy';
+        img.addEventListener('click', () => openLightbox(img.currentSrc || img.src));
+        container.appendChild(img);
+      }
+    }
+  }
+
+  // ── 统一入口：输入收信码 → 并行试解密所有门禁条目 → 路由到专属信件 ──
+  // 不存储任何「正确答案库」：用输入的码逐一尝试解密，命中的即身份。
+  function initRouteMode(data) {
+    const gatedIds = Object.keys(data).filter(id => data[id] && data[id].data);
+    $loading.style.display = 'none';
+    if (gatedIds.length === 0) {
+      showStateError('暂无可解锁的信件');
+      return;
+    }
+
+    $routeScreen.classList.add('active');
+    $routeInput.focus();
+
+    async function submit() {
+      const code = $routeInput.value.trim();
+      if (!code) {
+        $routeError.textContent = '请输入收信码';
+        $routeInput.focus();
+        return;
+      }
+
+      $routeBtn.disabled = true;
+      $routeBtn.textContent = '验证中…';
+      $routeError.textContent = '';
+
+      try {
+        // 并行试解密（每个条目 catch 为 null，Promise.all 不会因错误答案中断）
+        const payloads = await Promise.all(gatedIds.map(id => decryptPayload(data[id], code)));
+        const idx = payloads.findIndex(p => p !== null);
+        if (idx === -1) {
+          $routeError.textContent = '收信码不正确，请再试一次';
+          $routeInput.classList.add('shake');
+          setTimeout(() => $routeInput.classList.remove('shake'), 400);
+          $routeInput.select();
+          return;
+        }
+        renderLetter(data[gatedIds[idx]], payloads[idx]);
+      } finally {
+        $routeBtn.disabled = false;
+        $routeBtn.textContent = '解 锁';
       }
     }
 
-    $secret.classList.add('active');
+    $routeBtn.addEventListener('click', submit);
+    $routeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
   }
 
   // ── UI helpers ───────────────────────────────
@@ -904,6 +982,12 @@
   $answer.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') tryUnlock();
   });
+
+  // ── 统一入口启动（无 ?id= / 链接无效） ────────
+  // 必须在 Lightbox 等模块初始化之后调用（路由命中后渲染信件会用到）。
+  if (!entry) {
+    initRouteMode(data);
+  }
 
 })();
 </script>

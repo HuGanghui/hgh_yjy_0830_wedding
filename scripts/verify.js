@@ -9,12 +9,15 @@
 //   5. QR 码（测试三）：每个 qrcodes/<id>.png 存在、是有效 500×500 PNG、非空；并用 jsqr 解码，
 //      断言编码内容 == baseUrl?id=<id>
 //   6. 浏览器流程（jsdom，测试二）：加载真实 public/index.html 脚本，模拟输入答案点击解锁——
-//      公开区直接渲染、错误答案提示「答案不正确」、正确答案解锁出 secret 区。
+//      公开区直接渲染、错误答案提示「答案不正确」、正确答案解锁出专属信件视图（致[to]+正文）。
 //      ⚠️ Node 端解密查不出 index.html 自身代码被改坏（参数/流程），这段专门抓它。
 //   7. Lightbox 图片放大预览（jsdom，测试二内）：点照片打开预览、图内点按放大/还原、
 //      点背景/Esc/✕ 关闭 —— 逐项断言，防止 index.html 的交互代码被改坏。
 //   8. 图片下载（jsdom，测试二内）：lightbox 点「下载」——手机端走 navigator.share(文件)；
 //      桌面退回 <a download> 直链；手机端无分享能力（微信内置浏览器等）提示长按保存、不触发下载。
+//   9. 统一入口 + 密码路由（jsdom，测试二内）：无 ?id= 时显示「请输入收信码」入口页，
+//      输入密码后并行试解密所有门禁条目定位身份 → 跳转到对应专属信件。断言错误密码被拒、
+//      不同密码路由到不同专属信件（demo：花花/梁雪/小童 三码三信）。
 //
 // 安全约定：只输出 pass/fail，绝不打印答案、绝不打印解密后的明文内容。任一失败 → 非 0 退出。
 
@@ -234,18 +237,90 @@ async function checkBrowserFlow(data, configById) {
     if (!errShown) { fail('浏览器: 错误答案未提示「答案不正确」'); }
     else pass('浏览器: 错误答案被拒绝并提示');
 
-    // ③ 正确答案 → secret 区显示且渲染了额外内容
+    // ③ 正确答案 → 专属信件视图显示，致[to] 与正文匹配
     $input.value = answer;
     $btn.click();
-    const secretShown = await waitFor(win, () =>doc.getElementById('secret').classList.contains('active'));
-    if (!secretShown) { fail('浏览器: 正确答案未解锁出额外内容'); return; }
+    const letterShown = await waitFor(win, () => doc.getElementById('letter').classList.contains('active'));
+    if (!letterShown) { fail('浏览器: 正确答案未解锁出专属信件'); return; }
+    const toShown = doc.getElementById('letter-to').textContent;
+    const expectedTo = (configById[gatedId] && configById[gatedId].to) || '';
+    if (toShown !== expectedTo) {
+      fail(`浏览器: 信件收信人应为「${expectedTo}」→ 实际「${toShown}」`);
+      return;
+    }
+    pass(`浏览器: 正确答案解锁出专属信件（致 ${toShown}）`);
     const hasMedia =
       doc.getElementById('secret-images').children.length > 0 ||
       doc.getElementById('secret-videos').children.length > 0;
     if (doc.getElementById('content-text').textContent.trim() || hasMedia) {
-      pass('浏览器: 正确答案解锁成功，额外内容已渲染');
+      pass('浏览器: 专属信件正文/媒体已渲染');
     } else {
-      fail('浏览器: secret 区显示了但内容为空');
+      fail('浏览器: 专属信件显示了但内容为空');
+    }
+  } finally {
+    dom.window.close();
+  }
+}
+
+// ── 统一入口 + 密码路由（浏览器流程的一部分） ────────
+// 无 ?id= 时显示「请输入收信码」入口页；输入密码后并行试解密所有门禁条目定位身份，
+// 跳转到对应专属信件。断言：错误密码被拒、不同密码 → 不同专属信件。
+async function checkUnifiedRouting(data, configById) {
+  const gatedIds = Object.keys(data).filter(id => data[id] && data[id].data);
+  if (gatedIds.length === 0) { pass('路由: 无门禁条目，跳过'); return; }
+
+  // ① 无 ?id= → 显示统一入口页（不显示公开照片/描述）
+  const dom = createDom(data, null);
+  const win = dom.window;
+  const doc = win.document;
+  try {
+    const routeShown = await waitFor(win, () => doc.getElementById('route-screen').classList.contains('active'));
+    if (!routeShown) { fail('路由: 无 ?id= 时应显示「请输入收信码」入口页'); return; }
+    if (doc.getElementById('public').classList.contains('active')) {
+      fail('路由: 无 ?id= 时不应显示公开区（应先输入收信码）');
+    }
+    pass('路由: 无 ?id= 时显示统一入口页（输入收信码）');
+
+    // 取样例：优先 demo 三人（花花/梁雪/小童），否则取前 3 个门禁条目
+    const byTo = (name) => gatedIds.find(id => configById[id] && configById[id].to === name);
+    let sampleIds = ['花花', '梁雪', '小童'].map(byTo).filter(Boolean);
+    if (sampleIds.length < 3) sampleIds = gatedIds.slice(0, 3);
+    sampleIds = [...new Set(sampleIds)].slice(0, 3);
+
+    // ② 错误密码 → 拒绝并提示，不出现专属信件
+    const $input = doc.getElementById('route-input');
+    const $btn = doc.getElementById('route-btn');
+    const $err = doc.getElementById('route-error');
+    $input.value = WRONG_ANSWER;
+    $btn.click();
+    const errShown = await waitFor(win, () => /不正确/.test($err.textContent));
+    if (!errShown) { fail('路由: 错误密码未被拒绝'); }
+    else pass('路由: 错误密码被拒并提示');
+    if (doc.getElementById('letter').classList.contains('active')) {
+      fail('路由: 错误密码竟然解锁了专属信件');
+    }
+
+    // ③ 每个样例输自己的真实密码 → 路由到对应的专属信件（收信人正确）
+    for (const id of sampleIds) {
+      const d2 = createDom(data, null);
+      const w2 = d2.window;
+      const doc2 = w2.document;
+      try {
+        const shown = await waitFor(w2, () => doc2.getElementById('route-screen').classList.contains('active'));
+        if (!shown) { fail(`路由: [${id}] 未进入统一入口页`); continue; }
+        doc2.getElementById('route-input').value = configById[id].answer;
+        doc2.getElementById('route-btn').click();
+        const letterShown = await waitFor(w2, () => doc2.getElementById('letter').classList.contains('active'));
+        if (!letterShown) { fail(`路由: [${id}] 输入正确密码后未出现专属信件`); continue; }
+        const toShown = doc2.getElementById('letter-to').textContent;
+        if (toShown !== configById[id].to) {
+          fail(`路由: [${id}] 应路由到「${configById[id].to}」→ 实际「${toShown}」`);
+          continue;
+        }
+        pass(`路由: [${id}] 输入密码后跳转到专属信件（致 ${toShown}）`);
+      } finally {
+        d2.window.close();
+      }
     }
   } finally {
     dom.window.close();
@@ -418,6 +493,22 @@ async function main() {
   const configById = {};
   if (config) for (const e of (config.entries || [])) configById[e.id] = e;
 
+  // 统一入口按密码路由：答案必须两两不同，否则同一密码命中多个条目、路由歧义。
+  // 只提醒不阻断（现仍有共享占位答案，等替换成真实答案后自然消失）；绝不打印答案本身。
+  if (config) {
+    const byAnswer = new Map();
+    for (const e of (config.entries || [])) {
+      if (!e.answer) continue;
+      if (!byAnswer.has(e.answer)) byAnswer.set(e.answer, []);
+      byAnswer.get(e.answer).push(e.id);
+    }
+    for (const [answer, dupIds] of byAnswer) {
+      if (dupIds.length > 1) {
+        console.log(`  ⚠️ 以下条目共享同一答案（统一入口路由会歧义，请替换为唯一答案）: ${dupIds.join(', ')}`);
+      }
+    }
+  }
+
   const ids = Object.keys(data);
   if (ids.length === 0) fail('data.json 没有任何条目');
 
@@ -503,6 +594,9 @@ async function main() {
 
   section('浏览器流程（测试二）');
   await checkBrowserFlow(data, configById);
+
+  section('统一入口 · 密码路由');
+  await checkUnifiedRouting(data, configById);
 
   section('Lightbox 图片放大预览');
   await checkLightbox(data);
