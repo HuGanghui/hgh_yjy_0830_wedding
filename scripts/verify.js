@@ -11,6 +11,8 @@
 //   6. 浏览器流程（jsdom，测试二）：加载真实 public/index.html 脚本，模拟输入答案点击解锁——
 //      公开区直接渲染、错误答案提示「答案不正确」、正确答案解锁出 secret 区。
 //      ⚠️ Node 端解密查不出 index.html 自身代码被改坏（参数/流程），这段专门抓它。
+//   7. Lightbox 图片放大预览（jsdom，测试二内）：点照片打开预览、图内点按放大/还原、
+//      点背景/Esc/✕ 关闭 —— 逐项断言，防止 index.html 的交互代码被改坏。
 //
 // 安全约定：只输出 pass/fail，绝不打印答案、绝不打印解密后的明文内容。任一失败 → 非 0 退出。
 
@@ -153,51 +155,51 @@ async function checkQRCodes(config) {
   }
 }
 
-// ── 浏览器流程冒烟测试（测试二）：真实 index.html + 模拟点击 ─────
-async function checkBrowserFlow(data, configById) {
-  let html;
-  try { html = fs.readFileSync('public/index.html', 'utf-8'); }
-  catch { fail('public/index.html 不存在'); return; }
-
-  // 挑一个有收件人（可解锁）的条目做流程测试；没有就只验公开区渲染
-  const gatedId = Object.keys(data).find(id => data[id] && data[id].data);
-  const answer = (gatedId && configById[gatedId] && configById[gatedId].answer) || null;
-
-  // 压掉页面脚本里「答案不正确」的 console.error（答错时 index.html 会 console.error 一行，
-  // 这是预期行为，不是 bug）。真实的渲染/流程问题由下面的断言拦截。
+// 用真实 public/index.html 起一个 jsdom 页面：
+// 页面脚本 fetch('data.json') 从本地磁盘喂给它；jsdom 没有 crypto.subtle，换成 Node 的
+// 原生 WebCrypto（同一套 PBKDF2/AES-GCM）；压掉「答案不正确」的 console.error（预期行为）。
+function createDom(data, entryId) {
+  const html = fs.readFileSync('public/index.html', 'utf-8');
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', () => {});
   virtualConsole.on('error', () => {});
-
-  const dom = new JSDOM(html, {
+  return new JSDOM(html, {
     runScripts: 'dangerously',
-    url: `http://localhost/?id=${gatedId || ''}`,
+    url: `http://localhost/?id=${entryId || ''}`,
     virtualConsole,
     beforeParse(window) {
-      // 页面脚本用 fetch('data.json') 拉数据 —— 从本地磁盘喂给它
       window.fetch = async (url) => {
         const p = path.join('public', url);
         if (!fs.existsSync(p)) return { ok: false, status: 404, json: async () => ({}) };
         return { ok: true, status: 200, json: async () => data };
       };
-      // jsdom 没有 crypto.subtle —— 换成 Node 的原生 WebCrypto（同一套 PBKDF2/AES-GCM）
       Object.defineProperty(window, 'crypto', { value: require('crypto').webcrypto, configurable: true });
     }
   });
+}
+
+async function waitFor(win, check, timeout = 5000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    if (check()) return true;
+    await new Promise(r => setTimeout(r, 20));
+  }
+  return false;
+}
+
+// ── 浏览器流程冒烟测试（测试二）：真实 index.html + 模拟点击 ─────
+async function checkBrowserFlow(data, configById) {
+  // 挑一个有收件人（可解锁）的条目做流程测试；没有就只验公开区渲染
+  const gatedId = Object.keys(data).find(id => data[id] && data[id].data);
+  const answer = (gatedId && configById[gatedId] && configById[gatedId].answer) || null;
+
+  const dom = createDom(data, gatedId);
   const win = dom.window;
   const doc = win.document;
-  const waitFor = async (check, timeout = 5000) => {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-      if (check()) return true;
-      await new Promise(r => setTimeout(r, 20));
-    }
-    return false;
-  };
 
   try {
     // ① 加载后公开区直接渲染（无需答题）
-    const publicShown = await waitFor(() => doc.getElementById('public').classList.contains('active'));
+    const publicShown = await waitFor(win, () =>doc.getElementById('public').classList.contains('active'));
     if (!publicShown) { fail('浏览器: 加载后公开区未显示'); return; }
     pass('浏览器: 公开区直接渲染（照片/描述/问题，无需答题）');
 
@@ -211,14 +213,14 @@ async function checkBrowserFlow(data, configById) {
     // ② 错误答案 → 提示「答案不正确」（不依赖真实答案，config 缺失也能验）
     $input.value = WRONG_ANSWER;
     $btn.click();
-    const errShown = await waitFor(() => /答案不正确/.test($err.textContent));
+    const errShown = await waitFor(win, () =>/答案不正确/.test($err.textContent));
     if (!errShown) { fail('浏览器: 错误答案未提示「答案不正确」'); }
     else pass('浏览器: 错误答案被拒绝并提示');
 
     // ③ 正确答案 → secret 区显示且渲染了额外内容
     $input.value = answer;
     $btn.click();
-    const secretShown = await waitFor(() => doc.getElementById('secret').classList.contains('active'));
+    const secretShown = await waitFor(win, () =>doc.getElementById('secret').classList.contains('active'));
     if (!secretShown) { fail('浏览器: 正确答案未解锁出额外内容'); return; }
     const hasMedia =
       doc.getElementById('secret-images').children.length > 0 ||
@@ -228,6 +230,78 @@ async function checkBrowserFlow(data, configById) {
     } else {
       fail('浏览器: secret 区显示了但内容为空');
     }
+  } finally {
+    dom.window.close();
+  }
+}
+
+// ── Lightbox 图片放大预览冒烟（浏览器流程的一部分） ────
+// 点照片打开全屏预览 → 图内点按放大/还原 → 点图外背景 / Esc / ✕ 关闭、背景滚动锁定。
+// jsdom 的 getBoundingClientRect 恒为 0，测试里覆写成假矩形，让「点在图内/图外」可判定。
+async function checkLightbox(data) {
+  const photoId = Object.keys(data).find(id => data[id] && data[id].photo);
+  if (!photoId) { pass('lightbox: 当前数据无照片条目，跳过'); return; }
+
+  const dom = createDom(data, photoId);
+  const win = dom.window;
+  const doc = win.document;
+
+  try {
+    if (!await waitFor(win, () => doc.getElementById('public').classList.contains('active'))) {
+      fail('lightbox: 公开区未渲染，无法测照片放大');
+      return;
+    }
+    const $photo = doc.getElementById('public-photo');
+    if (!$photo.getAttribute('src')) { fail('lightbox: 公开照片未渲染 src'); return; }
+    if (doc.getElementById('photo-wrap').style.display !== 'block') {
+      fail('lightbox: 照片容器未显示'); return;
+    }
+
+    const $lb = doc.getElementById('lightbox');
+    const $lbImg = doc.getElementById('lightbox-img');
+    const $lbStage = doc.getElementById('lightbox-stage');
+    const $lbClose = doc.getElementById('lightbox-close');
+    const click = (el, x, y) =>
+      el.dispatchEvent(new win.MouseEvent('click', { bubbles: true, clientX: x, clientY: y }));
+
+    // ① 点照片 → 打开预览 + 锁定背景滚动
+    $photo.click();
+    if (!$lb.classList.contains('open')) { fail('lightbox: 点照片未打开预览'); return; }
+    if (!$lbImg.getAttribute('src')) { fail('lightbox: 预览 img 无 src'); return; }
+    if (!doc.body.classList.contains('lightbox-open')) { fail('lightbox: 背景滚动未锁定'); return; }
+    pass('lightbox: 点照片打开预览并锁定背景滚动');
+
+    // ② 图内点按 → 放大 2.4x；再点按 → 还原
+    Object.defineProperty($lbImg, 'getBoundingClientRect', { value: () => ({ left: 100, top: 100, right: 300, bottom: 300 }) });
+    click($lbStage, 150, 150);
+    if (!/scale\(2\.4\)/.test($lbImg.style.transform)) {
+      fail(`lightbox: 图内点按未放大到 2.4x → ${$lbImg.style.transform}`); return;
+    }
+    pass('lightbox: 图内点按放大到 2.4x');
+    click($lbStage, 150, 150);
+    if ($lbImg.style.transform !== 'translate(0px, 0px) scale(1)') {
+      fail('lightbox: 再点按未还原'); return;
+    }
+    pass('lightbox: 再点按还原');
+
+    // ③ 点图外背景 → 关闭
+    click($lbStage, 10, 10);
+    if ($lb.classList.contains('open')) { fail('lightbox: 点背景未关闭'); return; }
+    pass('lightbox: 点图外背景关闭');
+
+    // ④ 重新打开 → Esc 关闭
+    $photo.click();
+    if (!$lb.classList.contains('open')) { fail('lightbox: 二次打开失败'); return; }
+    win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    if ($lb.classList.contains('open')) { fail('lightbox: Esc 未关闭'); return; }
+    pass('lightbox: Esc 关闭');
+
+    // ⑤ ✕ 按钮关闭
+    $photo.click();
+    if (!$lb.classList.contains('open')) { fail('lightbox: 第三次打开失败'); return; }
+    $lbClose.click();
+    if ($lb.classList.contains('open')) { fail('lightbox: ✕ 按钮未关闭'); return; }
+    pass('lightbox: ✕ 按钮关闭');
   } finally {
     dom.window.close();
   }
@@ -339,6 +413,9 @@ async function main() {
 
   section('浏览器流程（测试二）');
   await checkBrowserFlow(data, configById);
+
+  section('Lightbox 图片放大预览');
+  await checkLightbox(data);
 
   section('总结');
   console.log(`共 ${checks} 项检查，失败 ${failures} 项`);
