@@ -11,8 +11,8 @@
 //   6. 浏览器流程（jsdom，测试二）：加载真实 public/index.html 脚本，模拟输入答案点击解锁——
 //      公开区直接渲染、错误答案提示「答案不正确」、正确答案解锁出专属信件视图（致[to]+正文）。
 //      ⚠️ Node 端解密查不出 index.html 自身代码被改坏（参数/流程），这段专门抓它。
-//   7. Lightbox 图片放大预览（jsdom，测试二内）：点照片打开预览、图内点按放大/还原、
-//      点背景/Esc/✕ 关闭 —— 逐项断言，防止 index.html 的交互代码被改坏。
+//   7. Lightbox 图片放大预览（jsdom，测试二内）：点照片打开预览、再点一下缩小退出、
+//      Esc 关闭、无 ✕ 按钮（仅左上角下载）——逐项断言，防止 index.html 的交互代码被改坏。
 //   8. 图片下载（jsdom，测试二内）：lightbox 点「下载」——手机端走 navigator.share(文件)；
 //      桌面退回 <a download> 直链；手机端无分享能力（微信内置浏览器等）提示长按保存、不触发下载。
 //   9. 一码多信（jsdom，测试二内）：同一二维码（?id=A-05）→ 公开区直接渲染；输入错误
@@ -383,8 +383,8 @@ async function checkNoEntryFallback(data) {
 }
 
 // ── Lightbox 图片放大预览冒烟（浏览器流程的一部分） ────
-// 点照片打开全屏预览 → 图内点按放大/还原 → 点图外背景 / Esc / ✕ 关闭、背景滚动锁定。
-// jsdom 的 getBoundingClientRect 恒为 0，测试里覆写成假矩形，让「点在图内/图外」可判定。
+// 点照片打开全屏预览 → 再点一下即缩小退出 → Esc 关闭、背景滚动锁定。
+// 无 ✕ 按钮（只有左上角下载）；jsdom 只发 click（无 pointer 手势）→ 视为干净点按。
 async function checkLightbox(data) {
   const photoId = Object.keys(data).find(id => data[id] && data[id].photo);
   if (!photoId) { pass('lightbox: 当前数据无照片条目，跳过'); return; }
@@ -407,9 +407,7 @@ async function checkLightbox(data) {
     const $lb = doc.getElementById('lightbox');
     const $lbImg = doc.getElementById('lightbox-img');
     const $lbStage = doc.getElementById('lightbox-stage');
-    const $lbClose = doc.getElementById('lightbox-close');
-    const click = (el, x, y) =>
-      el.dispatchEvent(new win.MouseEvent('click', { bubbles: true, clientX: x, clientY: y }));
+    const click = () => $lbStage.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
 
     // ① 点照片 → 打开预览 + 锁定背景滚动
     $photo.click();
@@ -418,37 +416,22 @@ async function checkLightbox(data) {
     if (!doc.body.classList.contains('lightbox-open')) { fail('lightbox: 背景滚动未锁定'); return; }
     pass('lightbox: 点照片打开预览并锁定背景滚动');
 
-    // ② 图内点按 → 放大 2.4x；再点按 → 还原
-    Object.defineProperty($lbImg, 'getBoundingClientRect', { value: () => ({ left: 100, top: 100, right: 300, bottom: 300 }) });
-    click($lbStage, 150, 150);
-    if (!/scale\(2\.4\)/.test($lbImg.style.transform)) {
-      fail(`lightbox: 图内点按未放大到 2.4x → ${$lbImg.style.transform}`); return;
-    }
-    pass('lightbox: 图内点按放大到 2.4x');
-    click($lbStage, 150, 150);
-    if ($lbImg.style.transform !== 'translate(0px, 0px) scale(1)') {
-      fail('lightbox: 再点按未还原'); return;
-    }
-    pass('lightbox: 再点按还原');
+    // ② 打开后再点一下 → 缩小退出
+    click();
+    if ($lb.classList.contains('open')) { fail('lightbox: 再点一下未关闭'); return; }
+    pass('lightbox: 再点一下缩小退出');
 
-    // ③ 点图外背景 → 关闭
-    click($lbStage, 10, 10);
-    if ($lb.classList.contains('open')) { fail('lightbox: 点背景未关闭'); return; }
-    pass('lightbox: 点图外背景关闭');
-
-    // ④ 重新打开 → Esc 关闭
+    // ③ 重新打开 → Esc 关闭
     $photo.click();
     if (!$lb.classList.contains('open')) { fail('lightbox: 二次打开失败'); return; }
     win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     if ($lb.classList.contains('open')) { fail('lightbox: Esc 未关闭'); return; }
     pass('lightbox: Esc 关闭');
 
-    // ⑤ ✕ 按钮关闭
-    $photo.click();
-    if (!$lb.classList.contains('open')) { fail('lightbox: 第三次打开失败'); return; }
-    $lbClose.click();
-    if ($lb.classList.contains('open')) { fail('lightbox: ✕ 按钮未关闭'); return; }
-    pass('lightbox: ✕ 按钮关闭');
+    // ④ 无 ✕ 按钮（只保留左上角下载）
+    if (doc.getElementById('lightbox-close')) { fail('lightbox: 不应再有 ✕ 关闭按钮'); return; }
+    if (!doc.getElementById('lightbox-download')) { fail('lightbox: 应保留左上角下载按钮'); return; }
+    pass('lightbox: 无 ✕ 按钮，仅保留左上角下载');
   } finally {
     dom.window.close();
   }

@@ -313,25 +313,6 @@
     will-change: transform;
     -webkit-user-drag: none; /* 允许微信长按保存：img 保持可交互，手势靠事件冒泡到 stage */
   }
-  .lightbox-close {
-    position: fixed;
-    top: max(14px, env(safe-area-inset-top));
-    right: max(14px, env(safe-area-inset-right));
-    z-index: 1001;
-    width: 42px;
-    height: 42px;
-    border: none;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.14);
-    color: #fff;
-    font-size: 20px;
-    line-height: 1;
-    cursor: pointer;
-    display: grid;
-    place-items: center;
-    -webkit-appearance: none;
-  }
-  .lightbox-close:active { background: rgba(255, 255, 255, 0.32); }
   .lightbox-download {
     position: fixed;
     top: max(14px, env(safe-area-inset-top));
@@ -491,7 +472,6 @@
     </svg>
     <span>下载</span>
   </button>
-  <button class="lightbox-close" id="lightbox-close" aria-label="关闭预览">✕</button>
 </div>
 
 <script>
@@ -705,11 +685,11 @@
   }
 
   // ── Lightbox：图片放大预览（零依赖） ─────────
-  // 交互：点按 ⇄ 放大/还原、双指捏合缩放、拖动平移（放大后）、滚轮缩放、点背景/✕/Esc 关闭。
+  // 交互：点按 ⇄ 开合（点图放大打开，再点缩小退出）、双指捏合缩放、拖动平移（放大后）、
+  //       滚轮缩放、Esc 关闭。无 ✕ 按钮——点图本身即关闭，仅左上角保留下载。
   const $lightbox = document.getElementById('lightbox');
   const $lbStage  = document.getElementById('lightbox-stage');
   const $lbImg    = document.getElementById('lightbox-img');
-  const $lbClose  = document.getElementById('lightbox-close');
   const $lbDownload = document.getElementById('lightbox-download');
   let lb = { s: 1, tx: 0, ty: 0 };     // 当前 scale + 平移量
   let lbFitW = 0, lbFitH = 0;          // 适配视口的基准尺寸（未缩放），钳制平移边界用
@@ -762,7 +742,6 @@
     lbUpdateFit();
     $lightbox.classList.add('open');
     document.body.classList.add('lightbox-open');
-    $lbClose.focus();
   }
   function closeLightbox() {
     $lightbox.classList.remove('open');
@@ -877,19 +856,12 @@
   $lbStage.addEventListener('pointerup', lbEndPointer);
   $lbStage.addEventListener('pointercancel', lbEndPointer);
 
-  // ── 点击：图上点按缩放 ⇄ 还原；点图外背景关闭 ──
-  $lbStage.addEventListener('click', (e) => {
-    if (lbLongPress) { lbLongPress = false; return; }   // 长按（微信保存图片）后抬起，忽略缩放
-    if (lbMoved) return;   // 拖动/捏合后的 click 忽略
-    const r = $lbImg.getBoundingClientRect();   // 含 transform，反映缩放后实际位置
-    const inside = e.clientX >= r.left && e.clientX <= r.right &&
-                   e.clientY >= r.top && e.clientY <= r.bottom;
-    if (inside) {
-      if (lb.s <= 1.001) lbZoomAt(2.4, e.clientX, e.clientY, true);
-      else lbReset();
-    } else {
-      closeLightbox();
-    }
+  // ── 点击：打开预览后再点一下即缩小退出（无 ✕ 按钮） ──
+  // 长按（微信保存图片）/拖动/捏合 产生的 click 一律忽略，只有干净点按才关闭。
+  $lbStage.addEventListener('click', () => {
+    if (lbLongPress) { lbLongPress = false; return; }
+    if (lbMoved) return;
+    closeLightbox();
   });
 
   // ── 桌面滚轮缩放 ──
@@ -898,8 +870,7 @@
     lbZoomAt(lb.s * Math.pow(1.002, -e.deltaY), e.clientX, e.clientY, true);
   }, { passive: false });
 
-  // ── 关闭：✕ 按钮 / Esc ──
-  $lbClose.addEventListener('click', closeLightbox);
+  // ── 关闭：Esc / 点图（见上方 click 处理） ──
   $lbDownload.addEventListener('click', () => downloadImage($lbImg.src));
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeLightbox();
