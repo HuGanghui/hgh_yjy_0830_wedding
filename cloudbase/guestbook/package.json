@@ -1,7 +1,7 @@
 {
   "name": "guestbook",
   "version": "1.0.0",
-  "description": "婚礼留言板云函数：Web 触发器接收扫码页 POST，写入 CloudBase 云数据库",
+  "description": "婚礼留言板云函数：HTTP 访问服务接收扫码页 POST，写入 CloudBase 云数据库",
   "main": "index.js",
   "dependencies": {
     "@cloudbase/node-sdk": "^2.9.0"

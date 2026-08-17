@@ -598,7 +598,7 @@
 
   // ── 留言板存储适配器（provider 抽象，换后端只加一项） ──
   // 与 build.js 的 GB_PROVIDERS 表同构。每个 provider 声明必填字段与 submit(cfg, msg)。
-  // 当前实现 cloudbase：POST 到腾讯云云函数 Web 触发器（函数是唯一写入口，云数据库对客户端零权限），
+  // 当前实现 cloudbase：POST 到腾讯云云函数 HTTP 访问服务（云接入）（函数是唯一写入口，云数据库对客户端零权限），
   // 纯 REST 零 SDK。函数代码见 cloudbase/guestbook/（处理 OPTIONS 预检 + 校验 + 写库 + CORS 头）。
   // 未来换 Supabase：加 { supabase: { required:['url','anonKey','table'], submit(cfg, msg) {
   //   return fetch(`${cfg.url}/rest/v1/${cfg.table}`, { method:'POST', headers:{

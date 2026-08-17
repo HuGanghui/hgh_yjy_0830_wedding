@@ -506,7 +506,7 @@ async function checkGuestbookFlow(data, configById) {
     const p = posts[0];
     if (p.url !== 'https://cf.test/guestbook') {
       fail(`留言板: POST URL 应为 https://cf.test/guestbook → 实际 ${p.url}`);
-    } else pass('留言板: POST URL 正确（云函数 Web 触发器地址）');
+    } else pass('留言板: POST URL 正确（云函数 HTTP 访问服务地址）');
     if (p.init.method !== 'POST') fail('留言板: 请求方法应为 POST');
     else pass('留言板: 请求方法为 POST');
     const hdrs = p.init.headers || {};

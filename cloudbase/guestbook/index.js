@@ -1,15 +1,15 @@
-// 腾讯云 CloudBase 留言板云函数（Web 触发器 → 云数据库）
+// 腾讯云 CloudBase 留言板云函数（HTTP 访问服务 → 云数据库）
 //
 // 角色：婚礼留言板「唯一写入口」。扫码页（GitHub Pages，零服务器）把朋友留言
-//  POST 到本函数的 Web 触发器地址；函数校验后写入 guestbook 集合。
+//  POST 到本函数的 HTTP 访问服务地址；函数校验后写入 guestbook 集合。
 // 安全模型：云数据库 guestbook 集合安全规则设为 read/write 全关（客户端零权限），
 //  宾客只能经本函数写入、永远无法读取他人留言；新人读取走控制台/导出。
 //
 // 部署（详见 cloudbase/guestbook/README.md）：
 //   1. CloudBase 控制台 → 云函数 → 新建「guestbook」→ 上传本目录代码
-//   2. 配置「Web 触发器」，触发路径如 /guestbook（方法 POST）
+//   2. 配置「HTTP 访问服务」：关联本函数，触发路径如 /guestbook
 //   3. 云数据库新建集合 guestbook，安全规则设为 `{ "read": false, "write": false }`
-//   4. 复制 Web 触发器 URL → 填入 config.json 的 guestbook.options.url
+//   4. 复制 HTTP 访问地址 → 填入 config.json 的 guestbook.options.url
 //
 // 依赖：@cloudbase/node-sdk 由 CloudBase 云函数运行时内置（控制台创建函数时会自动带上）。
 
@@ -31,7 +31,7 @@ const MAX_NAME = 50;
 const MAX_TO = 100;
 
 exports.main = async (event) => {
-  // Web 触发器把 HTTP 请求包装进 event：method 在 httpMethod，body 为 JSON 字符串
+  // HTTP 访问服务把请求包装进 event：method 在 httpMethod，body 为 JSON 字符串
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: CORS, body: '' };
   }

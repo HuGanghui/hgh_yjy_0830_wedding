@@ -105,14 +105,14 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
   }
 }
 ```
-- 当前实现 **cloudbase**（腾讯云）：页面把留言 POST 到配置的 `url`（云函数 Web 触发器），纯 REST 零 SDK。可部署的函数代码在 `cloudbase/guestbook/`。
+- 当前实现 **cloudbase**（腾讯云）：页面把留言 POST 到配置的 `url`（云函数 HTTP 访问服务/云接入），纯 REST 零 SDK。可部署的函数代码在 `cloudbase/guestbook/`。
 - build.js 与 `public/index.html` 各有一份 `GB_PROVIDERS` 必填字段表，**改一边要改另一边**。
 - 未配置或校验失败 → build 写出 `public/guestbook.json` = `{"enabled": false}`（留言功能关闭，页面不显示输入框；config 无此块时构建**不报错**，属正常关闭态）。
 
 **安全模型（重要）**：云函数是**唯一写入口**，云数据库对客户端**零权限**——宾客只能经函数写入、永远无法读取他人留言。
 - **云数据库安全规则**（控制台配置，唯一强制层）：`guestbook` 集合安全规则设为 `{"read": false, "write": false}`；写数据只经云函数（函数用管理端身份，不受规则限制）。
 - **云函数**（`cloudbase/guestbook/`）负责校验（非空/长度）+ 写库 + 应答 CORS 预检；扫码页只 POST 不 GET，body 仅 `{type, entryId, to, name, text}`，不携带任何权限字段。
-- 客户端连接配置（云函数 Web 触发器 `url`）公开进页面属设计接受（`public/guestbook.json` 随 `public/` 提交）；安全靠「数据库零权限 + 函数校验 + 免费额度限流」兜底。
+- 客户端连接配置（云函数 HTTP 访问地址 `url`）公开进页面属设计接受（`public/guestbook.json` 随 `public/` 提交）；安全靠「数据库零权限 + 函数校验 + 免费额度限流」兜底。
 - 新人读取：CloudBase 控制台 → 云开发 → 数据库 → `guestbook` 集合（或导出）。免费体验版 3000 资源点/月（云函数调用 13.3 点/万次、数据库读写 200 点/万次），500 条留言约千分之几，完全覆盖。
 
 **换 Supabase**：`index.html` 的 `GB_PROVIDERS` 加 `supabase.submit`（POST `${url}/rest/v1/${table}` + `apikey`/`Authorization: Bearer` 头）、`build.js` 的 `GB_PROVIDERS` 加必填表 `['url','anonKey','table']`、config 换 options、控制台开 RLS「仅插入、禁止读」。
@@ -124,7 +124,7 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 - `config.json` **已 gitignore**——含答案（即密钥），切勿提交。
 - `qrcodes/` **已 gitignore**——QR 码通过私聊分发给对应的人，切勿提交到公开仓库。
 - `public/data.json` 与 `public/media/` 均由 `npm run build` 生成，属构建产物（`public/data.json` 现已提交、符合设计：公开字段明文、额外文字加密）。
-- `public/guestbook.json` 也是构建产物，随 `public/` 提交——含**客户端连接配置（云函数 Web 触发器 url），这是公开配置不是机密**，勿因「像密钥」而 gitignore 掉（否则线上 404、留言功能静默关闭）。
+- `public/guestbook.json` 也是构建产物，随 `public/` 提交——含**客户端连接配置（云函数 HTTP 访问地址 url），这是公开配置不是机密**，勿因「像密钥」而 gitignore 掉（否则线上 404、留言功能静默关闭）。
 - config 中的 `photo`/`secret.images`/`secret.videos` 指向**源媒体文件**（如 `assets/`，不在 `public/` 下）。`assets/` 与 `config.json` 一样**已 gitignore、不入库**——源媒体只在本地（**务必自行备份原图**），构建产物 `public/` 照常提交部署。
 - 修改内容后重新 `npm run build` 并重新部署 `public/` 即可更新，无需改 QR 码（URL 不变）。
 

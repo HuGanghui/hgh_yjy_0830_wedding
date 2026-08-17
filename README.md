@@ -154,8 +154,8 @@ cp config.example.json config.json
 
 扫码页默认不显示留言框。要启用，需要部署一个只写不读的云函数并填入 `config.json` 的 `guestbook` 块（build 会写出 `public/guestbook.json`，页面据此显示留言框）。后端是**腾讯云 CloudBase**（LeanCloud 已停服，此为官方迁移推荐方案）：
 
-1. **注册腾讯云并创建环境**：[云开发 CloudBase](https://cloud.tencent.com/product/tcb) → 新建环境（免费体验版即可；若遇 Web 触发器限制则用个人版 19.9 元/月，婚礼当月够用）。
-2. **部署云函数**：把仓库 `cloudbase/guestbook/` 目录部署为一个云函数（新建函数 → 上传该目录），配置 **Web 触发器**（触发路径如 `/guestbook`，方法 POST），复制生成的**触发器 URL**。
+1. **注册腾讯云并创建环境**：[云开发 CloudBase](https://cloud.tencent.com/product/tcb) → 新建环境（免费体验版即可；若遇 HTTP 访问服务限制则用个人版 19.9 元/月，婚礼当月够用）。
+2. **部署云函数**：把仓库 `cloudbase/guestbook/` 目录部署为一个云函数（新建函数 → 上传该目录），再配置 **HTTP 访问服务**（云接入，触发路径如 `/guestbook`），复制生成的**HTTP 访问地址**。
 3. **创建集合并收紧权限**：云数据库新建集合 `guestbook`，安全规则设为（关键，防任何人读/改）：
    ```json
    { "read": false, "write": false }
@@ -230,7 +230,7 @@ git push               # push 后 Actions 自动部署，几分钟后线上更�
 | 图片优化 | `sharp` (npm) | 构建时照片生成 480/960/1600 三档 × AVIF/WebP/JPEG，页面 `<picture>`+`srcset>` 按屏选档，手机端下载量减 3~6 倍 |
 | QR 码生成 | `qrcode` (npm) | 500px PNG，适合手机扫描 |
 | 前端页面 | 原生 HTML/CSS/JS | 单文件约 250 行，移动端优先 |
-| 留言板存储 | 腾讯云 CloudBase（云函数 Web 触发器 + 云数据库，原生 fetch） | 客户端只 POST 不 GET，云函数是唯一写入口，provider 抽象便于换 Supabase 等 |
+| 留言板存储 | 腾讯云 CloudBase（云函数 HTTP 访问服务 + 云数据库，原生 fetch） | 客户端只 POST 不 GET，云函数是唯一写入口，provider 抽象便于换 Supabase 等 |
 | 测试（dev） | `jsdom` + `jsqr` (npm) | pre-commit 自检：jsdom 跑真实 index.html 解锁流程，jsqr 解码 QR 内容 |
 | 托管 | GitHub Pages | 免费，全球 CDN |
 
