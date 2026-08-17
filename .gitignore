@@ -13,3 +13,8 @@ assets/
 
 # IDE
 .idea/
+
+# npx skills 安装的本地工具技能（第三方内容，不进仓库；.claude/skills 是它的 symlink）
+.agents/
+.claude/skills/
+skills-lock.json

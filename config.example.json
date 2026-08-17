@@ -4,7 +4,7 @@
     "enabled": false,
     "provider": "cloudbase",
     "options": {
-      "url": "https://<环境ID>.service.tcloudbase.com/guestbook"
+      "url": "https://guestbook-d2gg4yl5q45f02e97-1470127840.ap-shanghai.app.tcloudbase.com/guestbook"
     }
   },
   "entries": [
