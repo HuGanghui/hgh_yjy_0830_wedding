@@ -352,6 +352,70 @@
   .download-hint.show { opacity: 1; }
   body.lightbox-open { overflow: hidden; }   /* 预览时锁定背景滚动 */
 
+  /* ── 留言板：给新人的祝福 / 给收件人的回信 ── */
+  .guestbook {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px dashed var(--border);
+  }
+  .guestbook-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.03em;
+    margin-bottom: 4px;
+  }
+  .guestbook-hint {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+  .guestbook-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .guestbook-form input,
+  .guestbook-form textarea {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    font-family: inherit;
+    color: var(--text);
+    background: #fdfcf9;
+    outline: none;
+    transition: border-color 0.2s;
+    -webkit-appearance: none;
+  }
+  .guestbook-form input:focus,
+  .guestbook-form textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(139,111,78,0.1);
+  }
+  .guestbook-form input::placeholder,
+  .guestbook-form textarea::placeholder {
+    color: #c4b9a6;
+  }
+  .guestbook-form textarea {
+    resize: vertical;
+    min-height: 72px;
+    line-height: 1.6;
+  }
+  .guestbook-form input.shake,
+  .guestbook-form textarea.shake {
+    animation: shake 0.4s ease;
+    border-color: var(--error);
+  }
+  .guestbook-msg {
+    font-size: 0.88rem;
+    min-height: 1.4em;
+    text-align: center;
+  }
+  .guestbook-msg.ok { color: var(--success); }
+  .guestbook-msg.error { color: var(--error); }
+
   /* ── 动效：花瓣飘落（零依赖） ── */
   #petals {
     position: fixed;
@@ -463,6 +527,18 @@
       <button class="btn" id="unlock-btn">解 锁</button>
     </div>
     <p class="error-msg" id="error-msg"></p>
+
+    <!-- ═══ 留言板：给新人的祝福（guestbook.json enabled 才显示） ═══ -->
+    <div id="guestbook-public" class="guestbook" style="display:none">
+      <h3 class="guestbook-title">💌 给新人的祝福</h3>
+      <p class="guestbook-hint">写下想对我们说的话吧，我们会珍藏每一句。</p>
+      <div class="guestbook-form">
+        <input type="text" id="guest-name-public" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="你的名字（选填）">
+        <textarea id="guest-text-public" rows="3" maxlength="500" placeholder="写下想对我们说的话…"></textarea>
+        <button class="btn" id="guest-submit-public">送出祝福</button>
+      </div>
+      <p class="guestbook-msg" id="guest-msg-public"></p>
+    </div>
   </div>
 
   <!-- ═══ 专属信件：答对 / 路由命中后展示 ═══ -->
@@ -473,6 +549,18 @@
       <div class="media" id="secret-images"></div>
       <div class="media" id="secret-videos"></div>
       <div class="letter-sign">—— 来自新人的祝福</div>
+
+      <!-- ═══ 留言板：给收件人的回信（guestbook.json enabled 才显示） ═══ -->
+      <div id="guestbook-reply" class="guestbook" style="display:none">
+        <h4 class="guestbook-title">💌 给收件人的回信</h4>
+        <p class="guestbook-hint">给 TA 留句话吧，我们会把心意转达。</p>
+        <div class="guestbook-form">
+          <input type="text" id="guest-name-reply" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="你的名字（选填）">
+          <textarea id="guest-text-reply" rows="3" maxlength="500" placeholder="写下想说的话…"></textarea>
+          <button class="btn" id="guest-submit-reply">送出回信</button>
+        </div>
+        <p class="guestbook-msg" id="guest-msg-reply"></p>
+      </div>
     </div>
   </div>
 
@@ -508,6 +596,31 @@
   const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const PETAL_COLORS = ['#f7b7c8', '#f9d5d7', '#ffd9c0', '#fce4e8', '#fff0f3', '#f8e1d9'];
 
+  // ── 留言板存储适配器（provider 抽象，换后端只加一项） ──
+  // 与 build.js 的 GB_PROVIDERS 表同构。每个 provider 声明必填字段与 submit(cfg, msg)。
+  // 安全模型：Class 权限 create=所有用户、find/get/update/delete=仅 master（控制台配置），
+  // 对象不授公开 ACL，客户端只 POST 不 GET——appId/appKey 是客户端密钥，公开进页面属设计接受。
+  // 未来换 Supabase：加 { supabase: { required:['url','anonKey','table'], submit(cfg, msg) {
+  //   return fetch(`${cfg.url}/rest/v1/${cfg.table}`, { method:'POST', headers:{
+  //     'apikey': cfg.anonKey, 'Authorization': `Bearer ${cfg.anonKey}`, 'Content-Type':'application/json',
+  //     'Prefer':'return=minimal' }, body: JSON.stringify(msg) }); } } }，并在控制台开 RLS「仅插入、禁止读」。
+  const GB_PROVIDERS = {
+    leancloud: {
+      required: ['appId', 'appKey', 'serverURL', 'className'],
+      submit(cfg, msg) {
+        return fetch(`${cfg.serverURL}/1.1/classes/${cfg.className}`, {
+          method: 'POST',
+          headers: {
+            'X-LC-Id': cfg.appId,
+            'X-LC-Key': cfg.appKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(msg)
+        });
+      }
+    }
+  };
+
   // ── DOM refs ─────────────────────────────────
   const $loading      = document.getElementById('loading');
   const $public       = document.getElementById('public');
@@ -527,6 +640,19 @@
   const $secretImages = document.getElementById('secret-images');
   const $secretVideos = document.getElementById('secret-videos');
   const $stateErrMsg  = document.getElementById('state-error-msg');
+  const $guestbookPublic = document.getElementById('guestbook-public');
+  const $gbNamePublic  = document.getElementById('guest-name-public');
+  const $gbTextPublic  = document.getElementById('guest-text-public');
+  const $gbBtnPublic   = document.getElementById('guest-submit-public');
+  const $gbMsgPublic   = document.getElementById('guest-msg-public');
+  const $guestbookReply = document.getElementById('guestbook-reply');
+  const $gbNameReply   = document.getElementById('guest-name-reply');
+  const $gbTextReply   = document.getElementById('guest-text-reply');
+  const $gbBtnReply    = document.getElementById('guest-submit-reply');
+  const $gbMsgReply    = document.getElementById('guest-msg-reply');
+  let gb = { enabled: false };            // guestbook.json 客户端配置
+  let currentEntryTo = '';                // 当前条目公开区 To 标签（多收件人并列）
+  let currentReplyTo = '';                // 当前解锁收件人（信件回信归属）
 
   // ── Parse URL param ──────────────────────────
   const params = new URLSearchParams(window.location.search);
@@ -542,6 +668,14 @@
     showStateError('数据加载失败，请稍后重试');
     return;
   }
+
+  // ── 留言板配置（非致命）：guestbook.json 缺失/解析失败一律视为未启用，不拦页面 ──
+  try {
+    const resp = await fetch('guestbook.json');
+    if (resp.ok) gb = await resp.json();
+  } catch (err) { /* 旧部署无此文件 → 留言功能关闭 */ }
+  const gbReady = !!(gb && gb.enabled && GB_PROVIDERS[gb.provider]
+    && GB_PROVIDERS[gb.provider].required.every(k => gb.options && gb.options[k]));
 
   // 无 ?id=（或链接无效）→ 没有统一入口，直接提示扫收到的二维码。
   // 注意不能在这里 return：下方 Lightbox 等模块必须先初始化。
@@ -571,6 +705,12 @@
     $public.classList.add('active');
     startPetals();                       // 扫码进页：花瓣全程飘落（婚礼氛围）
     if (isGated) $answer.focus();
+
+    // 留言板：公开祝福对所有条目（含无收件人）都显示；裸地址页 #public 不 active，随父容器隐藏
+    if (gbReady) {
+      currentEntryTo = entry.letters ? entry.letters.map(l => l.to).join(' / ') : '';
+      $guestbookPublic.style.display = 'block';
+    }
   }
 
   // ── 公开照片渲染：<picture> + srcset 按屏幕选档 ──
@@ -680,6 +820,9 @@
     renderMedia($secretVideos, payload.videos, true);
     $letter.classList.add('active');
     if ($letter.scrollIntoView) $letter.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // 留言板：信件视图内的回信块（归属当前收件人）
+    currentReplyTo = to || '';
+    if (gbReady) $guestbookReply.style.display = 'block';
   }
 
   // 媒体为 public/ 下的静态文件直链（图片 <img> / 视频 <video>）
@@ -702,6 +845,50 @@
         img.addEventListener('click', () => openLightbox(img.currentSrc || img.src));
         container.appendChild(img);
       }
+    }
+  }
+
+  // ── 留言板：统一提交（公开祝福 / 信件回信），经 GB_PROVIDERS 适配器写入云数据库 ──
+  async function submitMessage(kind) {
+    const isPublic = kind === 'public';
+    const $name = isPublic ? $gbNamePublic : $gbNameReply;
+    const $text = isPublic ? $gbTextPublic : $gbTextReply;
+    const $btn  = isPublic ? $gbBtnPublic  : $gbBtnReply;
+    const $msg  = isPublic ? $gbMsgPublic  : $gbMsgReply;
+    const $field = $text;   // 校验失败抖动作用对象
+
+    const text = $text.value.trim();
+    if (!text) {
+      $msg.classList.remove('ok'); $msg.classList.add('error');
+      $msg.textContent = '留言不能为空';
+      $field.classList.add('shake');
+      setTimeout(() => $field.classList.remove('shake'), 400);
+      return;
+    }
+
+    $btn.disabled = true;
+    $btn.textContent = '提交中…';
+    try {
+      // 只 POST 不 GET：对象不授公开 ACL，读取仅新人控制台（master key）
+      const msg = {
+        type: isPublic ? 'blessing' : 'letter',
+        entryId,
+        to: isPublic ? currentEntryTo : currentReplyTo,
+        name: $name.value.trim(),
+        text
+      };
+      const resp = await GB_PROVIDERS[gb.provider].submit(gb.options, msg);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      $msg.classList.remove('error'); $msg.classList.add('ok');
+      $msg.textContent = isPublic ? '祝福已送达，谢谢！' : '回信已送达，谢谢！';
+      $text.value = '';          // 清空留言，保留名字方便再写
+    } catch (err) {
+      console.error('Guestbook submit failed:', err.name, err.message);
+      $msg.classList.remove('ok'); $msg.classList.add('error');
+      $msg.textContent = '提交失败，请稍后重试';   // 保留输入，可重试
+    } finally {
+      $btn.disabled = false;
+      $btn.textContent = isPublic ? '送出祝福' : '送出回信';
     }
   }
 
@@ -946,6 +1133,8 @@
   $answer.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') tryUnlock();
   });
+  $gbBtnPublic.addEventListener('click', () => submitMessage('public'));
+  $gbBtnReply.addEventListener('click', () => submitMessage('reply'));
 
   // ── 无 ?id= / 链接无效：提示扫收到的二维码 ──
   if (!entry) {

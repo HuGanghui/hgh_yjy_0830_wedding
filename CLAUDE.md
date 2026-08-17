@@ -18,7 +18,7 @@ QR 码加密解锁系统，**一种入口（二维码直达）**：
 - 任何修改、新增、删除文件，完成一个逻辑单元后立即 `git add` + `git commit`，不允许改动长期停留在工作区。
 - 提交前先 `git status` 和 `git diff`，确认只包含预期改动，绝不误提交 `config.json`（含答案/密钥）和 `qrcodes/`（QR 码）——见下方「Git 约定」。
 - 提交信息使用中文、动词开头的描述性写法（参考现有 commit 风格），例如 `feat: 新增视频内容支持`、`fix: 修复答案含中文空格时解密失败`。
-- **提交前自动自检**：仓库启用 pre-commit 钩子（`.githooks/pre-commit`，已提交入库）——暂存区涉及 `public/`（构建产物）/ `scripts/` / `.githooks/` 时，`git commit` 自动运行 `node scripts/verify.js`（① config↔data.json 条目互查 ② 真实收信码解密校验 + 错误收信码被拒 ③ 媒体路径磁盘/git 大小写校验 ④ QR 码 PNG 完整性 + jsqr 解码内容 ⑤ jsdom 跑真实 index.html 解锁流程冒烟 ⑥ Lightbox 图片放大预览 + 下载 ⑦ 一码多信（同一二维码多收件人，demo：A-05 花花/梁雪/小童 三码三信）⑧ 动效冒烟（花瓣进页飘落，不影响解锁流程）），任一失败**阻止提交**；纯文档提交自动跳过。⚠️ 该钩子靠 `git config core.hooksPath .githooks` 生效（配置不随克隆走），**新环境必须先执行这句**，否则钩子不生效。
+- **提交前自动自检**：仓库启用 pre-commit 钩子（`.githooks/pre-commit`，已提交入库）——暂存区涉及 `public/`（构建产物）/ `scripts/` / `.githooks/` 时，`git commit` 自动运行 `node scripts/verify.js`（① config↔data.json 条目互查 ② 真实收信码解密校验 + 错误收信码被拒 ③ 媒体路径磁盘/git 大小写校验 ④ QR 码 PNG 完整性 + jsqr 解码内容 ⑤ jsdom 跑真实 index.html 解锁流程冒烟 ⑥ Lightbox 图片放大预览 + 下载 ⑦ 一码多信（同一二维码多收件人，demo：A-05 花花/梁雪/小童 三码三信）⑧ 动效冒烟（花瓣进页飘落，不影响解锁流程）⑨ 留言板（guestbook.json 与 config 一致性 + 浏览器提交祝福/回信冒烟，含公开块显示/空拦截/POST 请求断言/失败重试/disabled 隐藏）），任一失败**阻止提交**；纯文档提交自动跳过。⚠️ 该钩子靠 `git config core.hooksPath .githooks` 生效（配置不随克隆走），**新环境必须先执行这句**，否则钩子不生效。
 - **较大功能改动用测试兜底**：新增或修改功能（尤其是 `public/index.html` 里的交互/逻辑）时，必须同步在 `scripts/verify.js` 中补充对应的自检测试（如解锁流程、Lightbox 的 DOM 冒烟），与代码**一并提交**；仅纯文档或样式微调可豁免。新测试未过不得提交。
 
 ## 常用命令
@@ -27,7 +27,7 @@ QR 码加密解锁系统，**一种入口（二维码直达）**：
 npm install              # 安装依赖（qrcode + sharp；sharp 用于构建时照片缩放压缩）
 cp config.example.json config.json   # 首次创建配置
 npm run build            # 构建：读取 config.json → 生成 public/data.json + qrcodes/*.png
-npm run verify           # 提交前自检（pre-commit 自动跑）：条目一致性 + 解密链路 + 媒体路径 + QR 内容 + 浏览器流程（含图片放大预览/下载/一码多信/花瓣动效）
+npm run verify           # 提交前自检（pre-commit 自动跑）：条目一致性 + 解密链路 + 媒体路径 + QR 内容 + 浏览器流程（含图片放大预览/下载/一码多信/花瓣动效/留言板）
 git config core.hooksPath .githooks  # 一次性设置：启用 pre-commit 钩子（新环境必跑）
 ```
 
@@ -45,7 +45,7 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 
 ## 架构与加密契约
 
-数据流：`config.json`（编辑）→ `build.js`（本地加密 + 拷贝媒体）→ `public/data.json` + `public/media/` + `qrcodes/*.png`（构建产物）→ `public/` 部署。
+数据流：`config.json`（编辑）→ `build.js`（本地加密 + 拷贝媒体 + 留言板配置归一化）→ `public/data.json` + `public/media/` + `public/guestbook.json` + `qrcodes/*.png`（构建产物）→ `public/` 部署。
 
 **build.js 与 index.html 的加密参数必须保持同步**，改动任何一边都要改另一边：
 
@@ -91,11 +91,43 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 - `public/index.html` 是零依赖单文件（原生 HTML/CSS/JS），移动端优先。
 - base64 用浏览器原生 `atob` / Node `Buffer`，注意 UTF-8 中文用 `TextEncoder`/`TextDecoder` 统一处理。
 
+## 留言板（Guestbook）：朋友写祝福 / 回信（云数据库直写）
+
+扫码页增加留言输入框：**公开区**「给新人的祝福」（所有扫码者，含无收件人条目）+ 解锁后**信件视图**信末「给收件人的回信」。只收集给新人看，**页面不回显他人留言**——新人到 LeanCloud 控制台查看/导出。
+
+**存储抽象（provider + options）**：`config.json` 的 `guestbook` 块声明后端，页面用 `GB_PROVIDERS` 适配器 map 分发，换后端零页面逻辑改动：
+```json
+"guestbook": {
+  "enabled": true,
+  "provider": "leancloud",
+  "options": {
+    "appId": "LeanCloud AppId",
+    "appKey": "LeanCloud AppKey",
+    "serverURL": "https://<AppId前8位>.api.lncld.com",
+    "className": "Guestbook"
+  }
+}
+```
+- `serverURL` 存**基础域名（不含 /1.1）**，页面拼 `{serverURL}/1.1/classes/{className}`。
+- build.js 与 `public/index.html` 各有一份 `GB_PROVIDERS` 必填字段表，**改一边要改另一边**。
+- 未配置或校验失败 → build 写出 `public/guestbook.json` = `{"enabled": false}`（留言功能关闭，页面不显示输入框；config 无此块时构建**不报错**，属正常关闭态）。
+
+**安全模型（重要）**：LeanCloud 的 `write` 覆盖 update/delete 而非 create——**不要**用对象 ACL `{"*":{"write":true}}`（会开放匿名删改）。正确做法（控制台配置，唯一强制层）：
+- **Class 权限**：`Guestbook` 类的 `create` = 所有用户（含匿名）；`find`/`get`/`update`/`delete` = 无权限（仅 master）。
+- 对象**不授公开 ACL**（请求体不传 ACL 字段）；客户端只 POST 不 GET。
+- appId/appKey 是**客户端密钥**，公开进页面 JS 属设计接受（`public/guestbook.json` 随 `public/` 提交）；靠 Class 权限收紧 + 免费额度限流兜底。
+- 新人读取：LeanCloud 控制台（master key 不受权限限制）。免费额度（开发版）3 万次 API/日 + 1GB 存储，500 条留言仅占单日额度 ~1.7%，完全覆盖。
+
+**换 Supabase**：`index.html` 的 `GB_PROVIDERS` 加 `supabase.submit`（POST `${url}/rest/v1/${table}` + `apikey`/`Authorization: Bearer` 头）、`build.js` 的 `GB_PROVIDERS` 加必填表 `['url','anonKey','table']`、config 换 options、控制台开 RLS「仅插入、禁止读」。
+
+**verify 覆盖**（`scripts/verify.js`）：① 构建产物一致性 `checkGuestbookBuild`（config ↔ guestbook.json 逐字段）；② 浏览器冒烟 `checkGuestbookFlow`（公开块显示含无收件人、空文本拦截、POST URL/头/body 不含公开写 ACL、成功反馈后可复用、失败保留输入、解锁后回信归属收件人、disabled 隐藏）。⚠️ 服务端 ACL/Class 权限强制力无法在 jsdom 测，需手动 curl 验证一次（POST 应 201、匿名 find 应 403）。
+
 ## Git 约定（安全相关）
 
 - `config.json` **已 gitignore**——含答案（即密钥），切勿提交。
 - `qrcodes/` **已 gitignore**——QR 码通过私聊分发给对应的人，切勿提交到公开仓库。
 - `public/data.json` 与 `public/media/` 均由 `npm run build` 生成，属构建产物（`public/data.json` 现已提交、符合设计：公开字段明文、额外文字加密）。
+- `public/guestbook.json` 也是构建产物，随 `public/` 提交——含**客户端 appId/appKey，这是公开配置不是机密**，勿因「像密钥」而 gitignore 掉（否则线上 404、留言功能静默关闭）。
 - config 中的 `photo`/`secret.images`/`secret.videos` 指向**源媒体文件**（如 `assets/`，不在 `public/` 下）。`assets/` 与 `config.json` 一样**已 gitignore、不入库**——源媒体只在本地（**务必自行备份原图**），构建产物 `public/` 照常提交部署。
 - 修改内容后重新 `npm run build` 并重新部署 `public/` 即可更新，无需改 QR 码（URL 不变）。
 

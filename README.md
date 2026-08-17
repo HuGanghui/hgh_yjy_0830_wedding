@@ -78,10 +78,10 @@ GCM 是一种认证加密模式，解密时自动验证数据完整性。如果�
 qr-unlock/
 ├── README.md             # 本文档
 ├── package.json           # npm 项目配置
-├── build.js               # 构建脚本（加密额外内容 + 拷贝媒体 + 生成 QR 码）
+├── build.js               # 构建脚本（加密额外内容 + 拷贝媒体 + 生成 QR 码 + 留言板配置归一化）
 ├── server.js              # 本地预览服务器（零依赖，支持 Range/206，视频可拖进度条）
 ├── scripts/
-│   └── verify.js          # 构建产物自检（pre-commit 调用；条目一致性 + 解密 + 媒体路径 + QR + 浏览器流程）
+│   └── verify.js          # 构建产物自检（pre-commit 调用；条目一致性 + 解密 + 媒体路径 + QR + 浏览器流程 + 留言板）
 ├── .githooks/
 │   └── pre-commit         # 提交前钩子（需 git config core.hooksPath .githooks 启用）
 ├── config.json            # 条目配置（你编辑，已 gitignore）
@@ -92,6 +92,7 @@ qr-unlock/
 └── public/                # 部署到 GitHub Pages
     ├── index.html          # 解锁页面（单文件，零依赖）
     ├── data.json           # 数据（公开字段明文 + 额外内容加密）
+    ├── guestbook.json      # 留言板客户端配置（enabled/provider/options；未启用时 {"enabled":false}）
     └── media/              # 构建时拷贝的媒体（公开照片 / secret 随机名文件）
 ```
 
@@ -149,6 +150,36 @@ cp config.example.json config.json
 
 **无收件人条目**：若照片没有特定收件人，省略 `to` 字段即可。此时条目只需 `id` / `photo` / `description`，页面扫码后**只显示照片与描述**，不出现问题、答案输入框和解锁按钮，也没有额外内容（`question` / `answer` / `secret` 会被构建脚本忽略并提示）。这类条目的 QR 码同样生成，便于把所有照片一次性分享出去。
 
+### 启用留言板（可选）：让朋友写祝福 / 回信
+
+扫码页默认不显示留言框。要启用，需要注册一个免费云数据库并填入 `config.json` 的 `guestbook` 块（build 会写出 `public/guestbook.json`，页面据此显示留言框）：
+
+1. **注册 LeanCloud 国内版**（leancloud.cn，免费「开发版」，需手机号 + 实名认证），创建一个应用。
+2. 在控制台「数据存储」新建 Class，命名如 `Guestbook`（与 `config.options.className` 一致）。
+3. **设置 Class 权限**（安全关键，见下）：
+   - `create` = **所有用户**（含匿名，这样扫码者不登录也能提交）
+   - `find` / `get` / `update` / `delete` = **无权限**（仅 master key）
+4. 从控制台「应用凭证」复制 `AppId` / `AppKey` / `API 服务器地址`，填入 config：
+   ```json
+   "guestbook": {
+     "enabled": true,
+     "provider": "leancloud",
+     "options": {
+       "appId": "你的 AppId",
+       "appKey": "你的 AppKey",
+       "serverURL": "https://<AppId前8位>.api.lncld.com",
+       "className": "Guestbook"
+     }
+   }
+   ```
+5. 重新 `npm run build` → 提交 `public/` → push 上线。
+
+**启用后页面效果**：每个扫码页的照片/描述下方出现「💌 给新人的祝福」（所有条目都有），答对收信码的信件视图信末出现「💌 给收件人的回信」。朋友填名字（选填）+ 留言（必填）提交后直写云数据库；**页面不回显他人留言**——你在控制台数据存储里查看，或导出 CSV。
+
+**安全说明（必读）**：LeanCloud 的 `write` 权限覆盖 update/delete 而非 create，**切勿**设置对象 ACL 为 `{"*":{"write":true}}`（会让任何人匿名删改留言）。读保护靠上面第 3 步的 Class 权限（`find`/`get` 仅 master）实现；`AppId`/`AppKey` 是客户端密钥、本就公开在页面 JS 里（`public/guestbook.json` 会随仓库提交），属设计接受。免费额度 3 万次 API/日 + 1GB 存储，几百条留言毫无压力。
+
+**想换其他云数据库（如 Supabase）**？存储做了 provider 抽象：加一个适配器（`index.html` 的 `GB_PROVIDERS` + `build.js` 的必填表 + config 换 options），页面逻辑零改动。
+
 ### 3. 构建
 
 ```bash
@@ -201,6 +232,7 @@ git push               # push 后 Actions 自动部署，几分钟后线上更�
 | 图片优化 | `sharp` (npm) | 构建时照片生成 480/960/1600 三档 × AVIF/WebP/JPEG，页面 `<picture>`+`srcset>` 按屏选档，手机端下载量减 3~6 倍 |
 | QR 码生成 | `qrcode` (npm) | 500px PNG，适合手机扫描 |
 | 前端页面 | 原生 HTML/CSS/JS | 单文件约 250 行，移动端优先 |
+| 留言板存储 | LeanCloud REST（原生 fetch） | 客户端只 POST 不 GET，provider 抽象便于换 Supabase 等 |
 | 测试（dev） | `jsdom` + `jsqr` (npm) | pre-commit 自检：jsdom 跑真实 index.html 解锁流程，jsqr 解码 QR 内容 |
 | 托管 | GitHub Pages | 免费，全球 CDN |
 
@@ -257,6 +289,7 @@ git push               # push 后 Actions 自动部署，几分钟后线上更�
 3. **媒体路径**：`photo` 及答对后可见的 `images`/`videos` 在磁盘上大小写精确存在，且与 git 实际跟踪名一致（拦 macOS `core.ignorecase=true` 把文件名大小写搞反、上线 404 的坑）
 4. **QR 码**（测试三）：每个 `qrcodes/<id>.png` 存在、是有效 500×500 PNG、非空；并用 `jsqr` 解码，断言编码内容 == `baseUrl?id=<id>`
 5. **浏览器流程**（测试二）：用 `jsdom` 加载真实 `public/index.html`，模拟输入答案点击解锁——公开区直接渲染、错误答案提示「答案不正确」、正确答案解锁出 secret 区（能抓住 `index.html` 自身的解密参数/流程被改坏——Node 端解密查不出这个）
+6. **留言板**：构建产物一致性（`config.guestbook` ↔ `public/guestbook.json` 逐字段）+ 浏览器冒烟（公开祝福块显示含无收件人条目、空文本拦截不发请求、POST 的 URL/头/body 正确且不含公开写 ACL、成功反馈后可复用、失败保留输入可重试、解锁后信件回信归属收件人、disabled 时隐藏）
 
 纯文档/代码类提交（不涉及 `public/`/`scripts/`/`.githooks/`）会自动跳过，不付出额外耗时。也可手动运行 `npm run verify`（与钩子内容相同）。
 

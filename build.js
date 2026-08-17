@@ -18,6 +18,15 @@ const RASTER_EXTS = new Set([
   '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.bmp', '.tif', '.tiff', '.avif'
 ]);
 
+// ── 留言板（guestbook）：云数据库直写，provider 抽象 ──────────
+// 每个 provider 声明必填字段（与 public/index.html 的 GB_PROVIDERS 表同构，改一边要改另一边）。
+// 当前只实现 leancloud；换 supabase 只需：此表加一项 + index.html GB_PROVIDERS 加适配器 + config 换 options。
+// 安全模型：Class 权限 create=所有用户、find/get/update/delete=仅 master（控制台配置）；
+// 对象不授公开 ACL，客户端只 POST 不 GET——appId/appKey 是客户端密钥，公开进页面属设计接受。
+const GB_PROVIDERS = {
+  leancloud: { required: ['appId', 'appKey', 'serverURL', 'className'] }
+};
+
 // ── 生成不可猜测的随机文件名（secret 媒体用，不含扩展名） ──
 function randomFileName() {
   return crypto.randomBytes(16).toString('hex');
@@ -264,6 +273,37 @@ async function main() {
 
   // ── 写入 data.json ───────────────────────────
   fs.writeFileSync('public/data.json', JSON.stringify(output), 'utf-8');
+
+  // ── 写入 guestbook.json（留言板客户端配置；始终写出） ──
+  // enabled=false 表示留言功能关闭；有配置且合法才写客户端连接参数（appId/appKey 是客户端密钥）。
+  const gbOut = { enabled: false };
+  const gb = config.guestbook;
+  if (gb && gb.enabled === true) {
+    const provider = GB_PROVIDERS[gb.provider];
+    if (!provider) {
+      errors.push(`guestbook: 未知 provider「${gb.provider}」（支持: ${Object.keys(GB_PROVIDERS).join(', ')}）`);
+    } else {
+      const opts = Object.assign({ className: 'Guestbook' }, gb.options || {});   // className 给默认值
+      const missing = provider.required.filter(k => !opts[k]);
+      if (missing.length) {
+        errors.push(`guestbook.options 缺少字段: ${missing.join(', ')}`);
+      } else {
+        gbOut.enabled = true;
+        gbOut.provider = gb.provider;
+        gbOut.options = {};
+        for (const k of provider.required) gbOut.options[k] = String(opts[k]).trim();
+        gbOut.options.serverURL = gbOut.options.serverURL.replace(/\/+$/, '');    // 基础域名，不含 /1.1
+        if (!/^https?:\/\//.test(gbOut.options.serverURL)) {
+          errors.push('guestbook.options.serverURL 须为 http(s):// 开头');
+          gbOut.enabled = false;
+        }
+      }
+    }
+  }
+  fs.writeFileSync('public/guestbook.json', JSON.stringify(gbOut), 'utf-8');
+  if (gbOut.enabled) {
+    console.log(`💬 guestbook: 已启用（${gbOut.provider}）→ POST ${gbOut.options.serverURL}/1.1/classes/${gbOut.options.className}`);
+  }
 
   // ── 汇总 ─────────────────────────────────────
   console.log(`\n${'─'.repeat(50)}`);

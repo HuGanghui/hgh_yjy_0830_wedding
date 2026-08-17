@@ -18,6 +18,12 @@
 //   9. 一码多信（jsdom，测试二内）：同一二维码（?id=A-05）→ 公开区直接渲染；输入错误
 //      收信码被拒；输入不同收信码分别路由到不同专属信件（demo：A-05 花花/梁雪/小童 三码三信）。
 //   10. 动效冒烟（jsdom，测试二内）：扫码进页 #petals 生成花瓣飘落，且不影响解锁流程。
+//   11. 留言板构建产物：config.guestbook（provider+options）↔ public/guestbook.json 逐字段一致；
+//       config 未启用 / 校验降级 → 产物 enabled=false；config.json 缺失时优雅跳过。
+//   12. 留言板浏览器冒烟（jsdom，测试二内）：公开祝福块显示（含无收件人条目）、空文本拦截不发请求、
+//       POST URL/头/body 正确且不含公开写 ACL、成功反馈后可复用、失败保留输入可重试；
+//       解锁门禁条目后信件回信块显示、body 归属收件人；disabled 时公开块隐藏。
+//       ⚠️ 服务端 ACL/Class 权限的强制力无法在 jsdom 测（无真实网络），靠控制台配置 + 手动 curl 验证。
 //
 // 安全约定：只输出 pass/fail，绝不打印答案、绝不打印解密后的明文内容。任一失败 → 非 0 退出。
 
@@ -184,8 +190,16 @@ async function checkQRCodes(config) {
 // 用真实 public/index.html 起一个 jsdom 页面：
 // 页面脚本 fetch('data.json') 从本地磁盘喂给它；jsdom 没有 crypto.subtle，换成 Node 的
 // 原生 WebCrypto（同一套 PBKDF2/AES-GCM）；压掉「答案不正确」的 console.error（预期行为）。
-function createDom(data, entryId) {
+// opts（可选，向后兼容）：
+//   guestbook — 注入 public/guestbook.json 的返回内容（默认读磁盘产物，缺失 → {enabled:false}）
+//   onFetch   — 拦截页面发出的绝对 http(s) 请求（如 LeanCloud POST，jsdom 无真实网络），返回 mock 响应
+function createDom(data, entryId, opts = {}) {
   const html = fs.readFileSync('public/index.html', 'utf-8');
+  const guestbook = opts.guestbook !== undefined
+    ? opts.guestbook
+    : (fs.existsSync('public/guestbook.json')
+        ? JSON.parse(fs.readFileSync('public/guestbook.json', 'utf-8'))
+        : { enabled: false });
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', () => {});
   virtualConsole.on('error', () => {});
@@ -194,8 +208,14 @@ function createDom(data, entryId) {
     url: `http://localhost/?id=${entryId || ''}`,
     virtualConsole,
     beforeParse(window) {
-      window.fetch = async (url) => {
-        const p = path.join('public', url);
+      window.fetch = async (url, init) => {
+        const u = String(url).split('?')[0];
+        if (/^https?:\/\//.test(u)) {                  // 外部请求（如 LeanCloud POST）→ 拦截
+          if (opts.onFetch) return opts.onFetch(url, init);
+          return { ok: false, status: 404, json: async () => ({}) };
+        }
+        if (u === 'guestbook.json') return { ok: true, status: 200, json: async () => guestbook };
+        const p = path.join('public', u);
         if (!fs.existsSync(p)) return { ok: false, status: 404, json: async () => ({}) };
         return { ok: true, status: 200, json: async () => data };
       };
@@ -380,6 +400,225 @@ async function checkNoEntryFallback(data) {
     pass('裸地址: 提示请扫描收到的二维码，不显示公开区');
   } finally {
     dom.window.close();
+  }
+}
+
+// ── 留言板构建产物自检：config.guestbook（provider+options）↔ public/guestbook.json ──
+// build.js 始终写出 guestbook.json；config 未启用/校验降级 → enabled=false，fail-safe。
+function checkGuestbookBuild(config) {
+  const gbFile = 'public/guestbook.json';
+  if (!fs.existsSync(gbFile)) {
+    fail('留言板: guestbook.json 不存在（未重新构建？）');
+    return;
+  }
+  const gbOut = JSON.parse(fs.readFileSync(gbFile, 'utf-8'));
+
+  if (!config) {
+    pass('留言板: config.json 缺失（本地才跑解密），跳过 guestbook 一致性校验');
+    return;
+  }
+  const gb = config.guestbook;
+
+  if (!gb || gb.enabled !== true) {
+    if (gbOut.enabled === false) {
+      pass('留言板: config 未启用 → guestbook.json enabled=false');
+    } else {
+      fail(`留言板: config 未启用 guestbook，但 guestbook.json 却 enabled=${gbOut.enabled}（旧产物残留？）`);
+    }
+    return;
+  }
+
+  // config 已启用 → 产物必须 enabled=true 且字段与 config 一致
+  if (gbOut.enabled !== true) {
+    fail('留言板: config 已启用 guestbook，但 guestbook.json 未启用（构建校验失败降级，或未重新构建）');
+    return;
+  }
+  if (gbOut.provider !== gb.provider) {
+    fail(`留言板: provider 不一致（config=${gb.provider} vs 产物=${gbOut.provider}）`);
+    return;
+  }
+  // 产物 options 各字段与 config 一致（className 允许 build 默认 'Guestbook' 补全）
+  const prod = gbOut.options || {};
+  const conf = Object.assign({ className: 'Guestbook' }, (gb.options || {}));
+  const mism = ['appId', 'appKey', 'serverURL', 'className']
+    .filter(k => String(prod[k]).trim() !== String(conf[k] || '').trim());
+  if (mism.length) {
+    fail(`留言板: guestbook.json options 与 config 不一致: ${mism.join(', ')}`);
+  } else {
+    pass(`留言板: guestbook.json 与 config 一致（${gb.provider}）`);
+  }
+}
+
+// ── 留言板浏览器冒烟（jsdom）：公开祝福 / 信件回信 / 空校验 / 失败重试 / disabled ──
+// ⚠️ 服务端 ACL/Class 权限的强制力无法在 jsdom 测（无真实网络），只能靠控制台配置 + 手动 curl 验证；
+// 这里断言客户端发出去的请求正确（URL/method/headers/body、不含公开写 ACL、成功/失败反馈）。
+async function checkGuestbookFlow(data, configById) {
+  const gbCfg = {
+    enabled: true,
+    provider: 'leancloud',
+    options: { appId: 'test-app', appKey: 'test-key', serverURL: 'https://lc.test/api', className: 'Guestbook' }
+  };
+  const plainId = Object.keys(data).find(id =>
+    data[id] && (!Array.isArray(data[id].letters) || data[id].letters.length === 0));
+  const gatedId = Object.keys(data).find(id =>
+    data[id] && Array.isArray(data[id].letters) && data[id].letters.length > 0);
+  const baseId = plainId || gatedId;
+  if (!baseId) { pass('留言板: 无任何条目，跳过'); return; }
+
+  // ── 场景 A：留言板启用 + 公开祝福提交 ──
+  const posts = [];
+  const dom = createDom(data, baseId, {
+    guestbook: gbCfg,
+    onFetch: (url, init) => {
+      posts.push({ url: String(url), init });
+      return { ok: true, status: 201, json: async () => ({ objectId: 'obj-1' }) };
+    }
+  });
+  const win = dom.window;
+  const doc = win.document;
+  try {
+    const pubShown = await waitFor(win, () => doc.getElementById('guestbook-public').style.display === 'block');
+    if (!pubShown) { fail('留言板: 公开留言块未显示'); return; }
+    pass(plainId ? '留言板: 公开留言块显示（无收件人条目也显示）'
+                 : '留言板: 公开留言块显示（当前数据无无收件人条目，用门禁条目验证）');
+
+    const $gName = doc.getElementById('guest-name-public');
+    const $gText = doc.getElementById('guest-text-public');
+    const $gBtn  = doc.getElementById('guest-submit-public');
+    const $gMsg  = doc.getElementById('guest-msg-public');
+
+    // ② 空文本提交 → 拦截，不发请求
+    $gBtn.click();
+    const emptyBlocked = await waitFor(win, () => /留言不能为空/.test($gMsg.textContent));
+    if (!emptyBlocked) { fail('留言板: 空文本提交未提示「留言不能为空」'); }
+    else pass('留言板: 空文本提交被拦截并提示');
+    if (posts.length !== 0) { fail(`留言板: 空提交竟发出了 ${posts.length} 次请求`); }
+    else pass('留言板: 空提交未发出请求');
+
+    // ③ 填名字+留言提交 → POST URL/方法/头/body 正确、不含公开写 ACL
+    $gName.value = '小胡';
+    $gText.value = '新婚快乐，百年好合！';
+    $gBtn.click();
+    const sent = await waitFor(win, () => posts.length === 1);
+    if (!sent) { fail('留言板: 提交后未发出 POST'); return; }
+    const p = posts[0];
+    if (p.url !== 'https://lc.test/api/1.1/classes/Guestbook') {
+      fail(`留言板: POST URL 应为 https://lc.test/api/1.1/classes/Guestbook → 实际 ${p.url}`);
+    } else pass('留言板: POST URL 正确（serverURL/1.1/classes/className）');
+    if (p.init.method !== 'POST') fail('留言板: 请求方法应为 POST');
+    else pass('留言板: 请求方法为 POST');
+    const hdrs = p.init.headers || {};
+    if (hdrs['X-LC-Id'] !== 'test-app' || hdrs['X-LC-Key'] !== 'test-key') {
+      fail('留言板: X-LC-Id / X-LC-Key 头不正确');
+    } else pass('留言板: X-LC-Id / X-LC-Key 头正确');
+    let body = null;
+    try { body = JSON.parse(p.init.body); } catch (e) { fail('留言板: POST body 非合法 JSON'); }
+    if (body) {
+      const okBody = body.type === 'blessing' && body.entryId === baseId
+        && body.name === '小胡' && body.text === '新婚快乐，百年好合！' && !body.ACL;
+      if (!okBody) fail(`留言板: POST body 不正确（应 type=blessing/entryId=${baseId}/name/text，不含 ACL）→ ${JSON.stringify(body)}`);
+      else pass('留言板: POST body 正确（type/entryId/name/text，不含公开写 ACL）');
+    }
+
+    // ④ 成功提示 + 表单可复用
+    const okShown = await waitFor(win, () => /祝福已送达/.test($gMsg.textContent));
+    if (!okShown) { fail('留言板: 未显示成功提示'); }
+    else pass('留言板: 成功提示出现');
+    if ($gText.value !== '') fail('留言板: 成功后留言未清空');
+    else pass('留言板: 成功后留言已清空（保留名字）');
+
+    $gText.value = '第二条祝福';
+    $gBtn.click();
+    const sent2 = await waitFor(win, () => posts.length === 2);
+    if (!sent2) { fail('留言板: 第二次提交未发出 POST（表单不可复用）'); }
+    else pass('留言板: 成功后表单可复用（第二次 POST 发出）');
+  } finally {
+    dom.window.close();
+  }
+
+  // ── 场景 B：提交失败 → 提示且保留输入可重试 ──
+  const dom2 = createDom(data, baseId, {
+    guestbook: gbCfg,
+    onFetch: () => ({ ok: false, status: 500, json: async () => ({}) })
+  });
+  const win2 = dom2.window;
+  const doc2 = win2.document;
+  try {
+    const shown2 = await waitFor(win2, () => doc2.getElementById('guestbook-public').style.display === 'block');
+    if (!shown2) { fail('留言板: 失败路径公开块未显示'); }
+    else {
+      const t2 = doc2.getElementById('guest-text-public');
+      t2.value = '这条会失败';
+      doc2.getElementById('guest-submit-public').click();
+      const failShown = await waitFor(win2, () => /提交失败/.test(doc2.getElementById('guest-msg-public').textContent));
+      if (!failShown) { fail('留言板: 提交失败未提示「提交失败，请稍后重试」'); }
+      else pass('留言板: 提交失败提示且保留输入（可重试）');
+      if (t2.value !== '这条会失败') fail('留言板: 失败后输入未保留');
+      else pass('留言板: 失败后输入保留');
+    }
+  } finally {
+    dom2.window.close();
+  }
+
+  // ── 场景 C：门禁条目解锁 → 信件回信块 → type=letter、to 归属收件人 ──
+  if (gatedId) {
+    const answer = configById[gatedId] ? configLetterAnswers(configById[gatedId])[0] : null;
+    if (answer) {
+      const postsB = [];
+      const domB = createDom(data, gatedId, {
+        guestbook: gbCfg,
+        onFetch: (url, init) => { postsB.push({ url: String(url), init }); return { ok: true, status: 201, json: async () => ({}) }; }
+      });
+      const winB = domB.window;
+      const docB = winB.document;
+      try {
+        await waitFor(winB, () => docB.getElementById('public').classList.contains('active'));
+        docB.getElementById('answer-input').value = answer;
+        docB.getElementById('unlock-btn').click();
+        const letterShown = await waitFor(winB, () => docB.getElementById('letter').classList.contains('active'));
+        if (!letterShown) { fail('留言板: 门禁条目无法解锁（无法测回信）'); }
+        else {
+          const replyShown = docB.getElementById('guestbook-reply').style.display === 'block';
+          if (!replyShown) { fail('留言板: 解锁后信件回信块未显示'); }
+          else pass('留言板: 解锁后信件回信块显示');
+          const expectedTo = (data[gatedId].letters[0] && data[gatedId].letters[0].to) || '';
+          docB.getElementById('guest-text-reply').value = '祝你幸福！';
+          docB.getElementById('guest-submit-reply').click();
+          const sentB = await waitFor(winB, () => postsB.length === 1);
+          if (!sentB) { fail('留言板: 回信未发出 POST'); }
+          else {
+            let b = null;
+            try { b = JSON.parse(postsB[0].init.body); } catch (e) { fail('留言板: 回信 body 非 JSON'); }
+            if (b && (b.type !== 'letter' || b.to !== expectedTo)) {
+              fail(`留言板: 回信 body 应为 {type:'letter', to:'${expectedTo}'} → 实际 ${JSON.stringify(b)}`);
+            } else if (b) {
+              pass(`留言板: 回信 body 正确（type=letter, to=${expectedTo}）`);
+            }
+          }
+        }
+      } finally {
+        domB.window.close();
+      }
+    } else {
+      pass('留言板: config 缺失真实收信码，跳过回信流程测试');
+    }
+  } else {
+    pass('留言板: 当前数据无门禁条目，跳过回信流程测试');
+  }
+
+  // ── 场景 D：留言板未启用 → 公开块隐藏 ──
+  const domC = createDom(data, baseId, { guestbook: { enabled: false } });
+  const winC = domC.window;
+  const docC = winC.document;
+  try {
+    await waitFor(winC, () => docC.getElementById('public').classList.contains('active'));
+    if (docC.getElementById('guestbook-public').style.display === 'none') {
+      pass('留言板: disabled 时公开留言块隐藏');
+    } else {
+      fail('留言板: disabled 时公开留言块未隐藏');
+    }
+  } finally {
+    domC.window.close();
   }
 }
 
@@ -597,6 +836,9 @@ async function main() {
     }
   }
 
+  section('留言板构建产物');
+  checkGuestbookBuild(config);
+
   let wrongTestDone = false;
 
   section('逐条目校验');
@@ -681,6 +923,9 @@ async function main() {
 
   section('一码多信 · 同一二维码多收件人');
   await checkMultiLetterRouting(data, configById);
+
+  section('留言板 · 提交祝福 / 回信（浏览器）');
+  await checkGuestbookFlow(data, configById);
 
   section('裸地址 · 无 ?id= 提示');
   await checkNoEntryFallback(data);
