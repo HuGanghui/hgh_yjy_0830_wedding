@@ -93,41 +93,38 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 
 ## 留言板（Guestbook）：朋友写祝福 / 回信（云数据库直写）
 
-扫码页增加留言输入框：**公开区**「给新人的祝福」（所有扫码者，含无收件人条目）+ 解锁后**信件视图**信末「给收件人的回信」。只收集给新人看，**页面不回显他人留言**——新人到 LeanCloud 控制台查看/导出。
+扫码页增加留言输入框：**公开区**「给新人的祝福」（所有扫码者，含无收件人条目）+ 解锁后**信件视图**信末「给收件人的回信」。只收集给新人看，**页面不回显他人留言**——新人到 CloudBase 控制台查看/导出。
 
 **存储抽象（provider + options）**：`config.json` 的 `guestbook` 块声明后端，页面用 `GB_PROVIDERS` 适配器 map 分发，换后端零页面逻辑改动：
 ```json
 "guestbook": {
   "enabled": true,
-  "provider": "leancloud",
+  "provider": "cloudbase",
   "options": {
-    "appId": "LeanCloud AppId",
-    "appKey": "LeanCloud AppKey",
-    "serverURL": "https://<AppId前8位>.api.lncld.com",
-    "className": "Guestbook"
+    "url": "https://<环境ID>.service.tcloudbase.com/guestbook"
   }
 }
 ```
-- `serverURL` 存**基础域名（不含 /1.1）**，页面拼 `{serverURL}/1.1/classes/{className}`。
+- 当前实现 **cloudbase**（腾讯云）：页面把留言 POST 到配置的 `url`（云函数 Web 触发器），纯 REST 零 SDK。可部署的函数代码在 `cloudbase/guestbook/`。
 - build.js 与 `public/index.html` 各有一份 `GB_PROVIDERS` 必填字段表，**改一边要改另一边**。
 - 未配置或校验失败 → build 写出 `public/guestbook.json` = `{"enabled": false}`（留言功能关闭，页面不显示输入框；config 无此块时构建**不报错**，属正常关闭态）。
 
-**安全模型（重要）**：LeanCloud 的 `write` 覆盖 update/delete 而非 create——**不要**用对象 ACL `{"*":{"write":true}}`（会开放匿名删改）。正确做法（控制台配置，唯一强制层）：
-- **Class 权限**：`Guestbook` 类的 `create` = 所有用户（含匿名）；`find`/`get`/`update`/`delete` = 无权限（仅 master）。
-- 对象**不授公开 ACL**（请求体不传 ACL 字段）；客户端只 POST 不 GET。
-- appId/appKey 是**客户端密钥**，公开进页面 JS 属设计接受（`public/guestbook.json` 随 `public/` 提交）；靠 Class 权限收紧 + 免费额度限流兜底。
-- 新人读取：LeanCloud 控制台（master key 不受权限限制）。免费额度（开发版）3 万次 API/日 + 1GB 存储，500 条留言仅占单日额度 ~1.7%，完全覆盖。
+**安全模型（重要）**：云函数是**唯一写入口**，云数据库对客户端**零权限**——宾客只能经函数写入、永远无法读取他人留言。
+- **云数据库安全规则**（控制台配置，唯一强制层）：`guestbook` 集合安全规则设为 `{"read": false, "write": false}`；写数据只经云函数（函数用管理端身份，不受规则限制）。
+- **云函数**（`cloudbase/guestbook/`）负责校验（非空/长度）+ 写库 + 应答 CORS 预检；扫码页只 POST 不 GET，body 仅 `{type, entryId, to, name, text}`，不携带任何权限字段。
+- 客户端连接配置（云函数 Web 触发器 `url`）公开进页面属设计接受（`public/guestbook.json` 随 `public/` 提交）；安全靠「数据库零权限 + 函数校验 + 免费额度限流」兜底。
+- 新人读取：CloudBase 控制台 → 云开发 → 数据库 → `guestbook` 集合（或导出）。免费体验版 3000 资源点/月（云函数调用 13.3 点/万次、数据库读写 200 点/万次），500 条留言约千分之几，完全覆盖。
 
 **换 Supabase**：`index.html` 的 `GB_PROVIDERS` 加 `supabase.submit`（POST `${url}/rest/v1/${table}` + `apikey`/`Authorization: Bearer` 头）、`build.js` 的 `GB_PROVIDERS` 加必填表 `['url','anonKey','table']`、config 换 options、控制台开 RLS「仅插入、禁止读」。
 
-**verify 覆盖**（`scripts/verify.js`）：① 构建产物一致性 `checkGuestbookBuild`（config ↔ guestbook.json 逐字段）；② 浏览器冒烟 `checkGuestbookFlow`（公开块显示含无收件人、空文本拦截、POST URL/头/body 不含公开写 ACL、成功反馈后可复用、失败保留输入、解锁后回信归属收件人、disabled 隐藏）。⚠️ 服务端 ACL/Class 权限强制力无法在 jsdom 测，需手动 curl 验证一次（POST 应 201、匿名 find 应 403）。
+**verify 覆盖**（`scripts/verify.js`）：① 构建产物一致性 `checkGuestbookBuild`（config ↔ guestbook.json 逐字段）；② 浏览器冒烟 `checkGuestbookFlow`（公开块显示含无收件人、空文本拦截、POST URL/头/body 不含权限字段、成功反馈后可复用、失败保留输入、解锁后回信归属收件人、disabled 隐藏）。⚠️ 服务端权限（云数据库安全规则）强制力无法在 jsdom 测，需手动 curl 验证一次（POST 应 200 + `{"code":0}`、空文本应 400、OPTIONS 预检应带 CORS 头）。
 
 ## Git 约定（安全相关）
 
 - `config.json` **已 gitignore**——含答案（即密钥），切勿提交。
 - `qrcodes/` **已 gitignore**——QR 码通过私聊分发给对应的人，切勿提交到公开仓库。
 - `public/data.json` 与 `public/media/` 均由 `npm run build` 生成，属构建产物（`public/data.json` 现已提交、符合设计：公开字段明文、额外文字加密）。
-- `public/guestbook.json` 也是构建产物，随 `public/` 提交——含**客户端 appId/appKey，这是公开配置不是机密**，勿因「像密钥」而 gitignore 掉（否则线上 404、留言功能静默关闭）。
+- `public/guestbook.json` 也是构建产物，随 `public/` 提交——含**客户端连接配置（云函数 Web 触发器 url），这是公开配置不是机密**，勿因「像密钥」而 gitignore 掉（否则线上 404、留言功能静默关闭）。
 - config 中的 `photo`/`secret.images`/`secret.videos` 指向**源媒体文件**（如 `assets/`，不在 `public/` 下）。`assets/` 与 `config.json` 一样**已 gitignore、不入库**——源媒体只在本地（**务必自行备份原图**），构建产物 `public/` 照常提交部署。
 - 修改内容后重新 `npm run build` 并重新部署 `public/` 即可更新，无需改 QR 码（URL 不变）。
 

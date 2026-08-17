@@ -21,9 +21,9 @@
 //   11. 留言板构建产物：config.guestbook（provider+options）↔ public/guestbook.json 逐字段一致；
 //       config 未启用 / 校验降级 → 产物 enabled=false；config.json 缺失时优雅跳过。
 //   12. 留言板浏览器冒烟（jsdom，测试二内）：公开祝福块显示（含无收件人条目）、空文本拦截不发请求、
-//       POST URL/头/body 正确且不含公开写 ACL、成功反馈后可复用、失败保留输入可重试；
+//       POST URL/头/body 正确且不含权限字段、成功反馈后可复用、失败保留输入可重试；
 //       解锁门禁条目后信件回信块显示、body 归属收件人；disabled 时公开块隐藏。
-//       ⚠️ 服务端 ACL/Class 权限的强制力无法在 jsdom 测（无真实网络），靠控制台配置 + 手动 curl 验证。
+//       ⚠️ 服务端权限（云数据库安全规则）的强制力无法在 jsdom 测（无真实网络），靠控制台配置 + 手动 curl 验证。
 //
 // 安全约定：只输出 pass/fail，绝不打印答案、绝不打印解密后的明文内容。任一失败 → 非 0 退出。
 
@@ -192,7 +192,7 @@ async function checkQRCodes(config) {
 // 原生 WebCrypto（同一套 PBKDF2/AES-GCM）；压掉「答案不正确」的 console.error（预期行为）。
 // opts（可选，向后兼容）：
 //   guestbook — 注入 public/guestbook.json 的返回内容（默认读磁盘产物，缺失 → {enabled:false}）
-//   onFetch   — 拦截页面发出的绝对 http(s) 请求（如 LeanCloud POST，jsdom 无真实网络），返回 mock 响应
+//   onFetch   — 拦截页面发出的绝对 http(s) 请求（如云函数 POST，jsdom 无真实网络），返回 mock 响应
 function createDom(data, entryId, opts = {}) {
   const html = fs.readFileSync('public/index.html', 'utf-8');
   const guestbook = opts.guestbook !== undefined
@@ -210,7 +210,7 @@ function createDom(data, entryId, opts = {}) {
     beforeParse(window) {
       window.fetch = async (url, init) => {
         const u = String(url).split('?')[0];
-        if (/^https?:\/\//.test(u)) {                  // 外部请求（如 LeanCloud POST）→ 拦截
+        if (/^https?:\/\//.test(u)) {                  // 外部请求（如云函数 POST）→ 拦截
           if (opts.onFetch) return opts.onFetch(url, init);
           return { ok: false, status: 404, json: async () => ({}) };
         }
@@ -437,11 +437,13 @@ function checkGuestbookBuild(config) {
     fail(`留言板: provider 不一致（config=${gb.provider} vs 产物=${gbOut.provider}）`);
     return;
   }
-  // 产物 options 各字段与 config 一致（className 允许 build 默认 'Guestbook' 补全）
+  // 产物 options 各字段与 config 一致（provider 无关：比较两侧并集的所有键；
+  // 归一化与 build.js 一致：trim + 去尾斜杠，避免 config 带尾斜杠被误报）
   const prod = gbOut.options || {};
-  const conf = Object.assign({ className: 'Guestbook' }, (gb.options || {}));
-  const mism = ['appId', 'appKey', 'serverURL', 'className']
-    .filter(k => String(prod[k]).trim() !== String(conf[k] || '').trim());
+  const conf = gb.options || {};
+  const norm = v => String(v || '').trim().replace(/\/+$/, '');
+  const mism = [...new Set([...Object.keys(prod), ...Object.keys(conf)])]
+    .filter(k => norm(prod[k]) !== norm(conf[k]));
   if (mism.length) {
     fail(`留言板: guestbook.json options 与 config 不一致: ${mism.join(', ')}`);
   } else {
@@ -450,13 +452,13 @@ function checkGuestbookBuild(config) {
 }
 
 // ── 留言板浏览器冒烟（jsdom）：公开祝福 / 信件回信 / 空校验 / 失败重试 / disabled ──
-// ⚠️ 服务端 ACL/Class 权限的强制力无法在 jsdom 测（无真实网络），只能靠控制台配置 + 手动 curl 验证；
-// 这里断言客户端发出去的请求正确（URL/method/headers/body、不含公开写 ACL、成功/失败反馈）。
+// ⚠️ 服务端权限（云数据库安全规则）的强制力无法在 jsdom 测（无真实网络），只能靠控制台配置 + 手动 curl 验证；
+// 这里断言客户端发出去的请求正确（URL/method/headers/body、body 不含权限字段、成功/失败反馈）。
 async function checkGuestbookFlow(data, configById) {
   const gbCfg = {
     enabled: true,
-    provider: 'leancloud',
-    options: { appId: 'test-app', appKey: 'test-key', serverURL: 'https://lc.test/api', className: 'Guestbook' }
+    provider: 'cloudbase',
+    options: { url: 'https://cf.test/guestbook' }
   };
   const plainId = Object.keys(data).find(id =>
     data[id] && (!Array.isArray(data[id].letters) || data[id].letters.length === 0));
@@ -495,22 +497,25 @@ async function checkGuestbookFlow(data, configById) {
     if (posts.length !== 0) { fail(`留言板: 空提交竟发出了 ${posts.length} 次请求`); }
     else pass('留言板: 空提交未发出请求');
 
-    // ③ 填名字+留言提交 → POST URL/方法/头/body 正确、不含公开写 ACL
+    // ③ 填名字+留言提交 → POST URL/方法/头/body 正确、body 不含权限字段
     $gName.value = '小胡';
     $gText.value = '新婚快乐，百年好合！';
     $gBtn.click();
     const sent = await waitFor(win, () => posts.length === 1);
     if (!sent) { fail('留言板: 提交后未发出 POST'); return; }
     const p = posts[0];
-    if (p.url !== 'https://lc.test/api/1.1/classes/Guestbook') {
-      fail(`留言板: POST URL 应为 https://lc.test/api/1.1/classes/Guestbook → 实际 ${p.url}`);
-    } else pass('留言板: POST URL 正确（serverURL/1.1/classes/className）');
+    if (p.url !== 'https://cf.test/guestbook') {
+      fail(`留言板: POST URL 应为 https://cf.test/guestbook → 实际 ${p.url}`);
+    } else pass('留言板: POST URL 正确（云函数 Web 触发器地址）');
     if (p.init.method !== 'POST') fail('留言板: 请求方法应为 POST');
     else pass('留言板: 请求方法为 POST');
     const hdrs = p.init.headers || {};
-    if (hdrs['X-LC-Id'] !== 'test-app' || hdrs['X-LC-Key'] !== 'test-key') {
-      fail('留言板: X-LC-Id / X-LC-Key 头不正确');
-    } else pass('留言板: X-LC-Id / X-LC-Key 头正确');
+    if ((hdrs['Content-Type'] || '').indexOf('application/json') !== 0) {
+      fail(`留言板: Content-Type 应为 application/json → 实际 ${hdrs['Content-Type']}`);
+    } else pass('留言板: Content-Type 为 application/json');
+    if ('X-LC-Id' in hdrs || 'X-LC-Key' in hdrs) {
+      fail('留言板: 不应携带 LeanCloud 专用头 X-LC-Id / X-LC-Key');
+    } else pass('留言板: 无 LeanCloud 专用头（云函数只需 JSON body）');
     let body = null;
     try { body = JSON.parse(p.init.body); } catch (e) { fail('留言板: POST body 非合法 JSON'); }
     if (body) {

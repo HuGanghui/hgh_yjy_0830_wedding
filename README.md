@@ -152,31 +152,29 @@ cp config.example.json config.json
 
 ### 启用留言板（可选）：让朋友写祝福 / 回信
 
-扫码页默认不显示留言框。要启用，需要注册一个免费云数据库并填入 `config.json` 的 `guestbook` 块（build 会写出 `public/guestbook.json`，页面据此显示留言框）：
+扫码页默认不显示留言框。要启用，需要部署一个只写不读的云函数并填入 `config.json` 的 `guestbook` 块（build 会写出 `public/guestbook.json`，页面据此显示留言框）。后端是**腾讯云 CloudBase**（LeanCloud 已停服，此为官方迁移推荐方案）：
 
-1. **注册 LeanCloud 国内版**（leancloud.cn，免费「开发版」，需手机号 + 实名认证），创建一个应用。
-2. 在控制台「数据存储」新建 Class，命名如 `Guestbook`（与 `config.options.className` 一致）。
-3. **设置 Class 权限**（安全关键，见下）：
-   - `create` = **所有用户**（含匿名，这样扫码者不登录也能提交）
-   - `find` / `get` / `update` / `delete` = **无权限**（仅 master key）
-4. 从控制台「应用凭证」复制 `AppId` / `AppKey` / `API 服务器地址`，填入 config：
+1. **注册腾讯云并创建环境**：[云开发 CloudBase](https://cloud.tencent.com/product/tcb) → 新建环境（免费体验版即可；若遇 Web 触发器限制则用个人版 19.9 元/月，婚礼当月够用）。
+2. **部署云函数**：把仓库 `cloudbase/guestbook/` 目录部署为一个云函数（新建函数 → 上传该目录），配置 **Web 触发器**（触发路径如 `/guestbook`，方法 POST），复制生成的**触发器 URL**。
+3. **创建集合并收紧权限**：云数据库新建集合 `guestbook`，安全规则设为（关键，防任何人读/改）：
+   ```json
+   { "read": false, "write": false }
+   ```
+4. 把触发器 URL 填入 config：
    ```json
    "guestbook": {
      "enabled": true,
-     "provider": "leancloud",
-     "options": {
-       "appId": "你的 AppId",
-       "appKey": "你的 AppKey",
-       "serverURL": "https://<AppId前8位>.api.lncld.com",
-       "className": "Guestbook"
-     }
+     "provider": "cloudbase",
+     "options": { "url": "https://<环境ID>.service.tcloudbase.com/guestbook" }
    }
    ```
 5. 重新 `npm run build` → 提交 `public/` → push 上线。
 
-**启用后页面效果**：每个扫码页的照片/描述下方出现「💌 给新人的祝福」（所有条目都有），答对收信码的信件视图信末出现「💌 给收件人的回信」。朋友填名字（选填）+ 留言（必填）提交后直写云数据库；**页面不回显他人留言**——你在控制台数据存储里查看，或导出 CSV。
+完整部署步骤（含 curl 验证）见 [`cloudbase/guestbook/README.md`](cloudbase/guestbook/README.md)。
 
-**安全说明（必读）**：LeanCloud 的 `write` 权限覆盖 update/delete 而非 create，**切勿**设置对象 ACL 为 `{"*":{"write":true}}`（会让任何人匿名删改留言）。读保护靠上面第 3 步的 Class 权限（`find`/`get` 仅 master）实现；`AppId`/`AppKey` 是客户端密钥、本就公开在页面 JS 里（`public/guestbook.json` 会随仓库提交），属设计接受。免费额度 3 万次 API/日 + 1GB 存储，几百条留言毫无压力。
+**启用后页面效果**：每个扫码页的照片/描述下方出现「💌 给新人的祝福」（所有条目都有），答对收信码的信件视图信末出现「💌 给收件人的回信」。朋友填名字（选填）+ 留言（必填）提交后经云函数直写云数据库；**页面不回显他人留言**——你在 CloudBase 控制台「云开发 → 数据库 → guestbook 集合」里查看，或点「导出」。
+
+**安全说明（必读）**：云函数是**唯一写入口**，`guestbook` 集合对客户端**零权限**（安全规则 read/write 全关）——宾客只能经函数写入、永远无法读取他人留言。扫码页只 POST 不 GET，body 仅 `{type, entryId, to, name, text}`，不带任何权限字段；`url` 是公开连接配置、本就在页面 JS 里（`public/guestbook.json` 随仓库提交），属设计接受。免费体验版 3000 资源点/月（云函数调用 13.3 点/万次、数据库读写 200 点/万次），几百条留言约千分之几的消耗。
 
 **想换其他云数据库（如 Supabase）**？存储做了 provider 抽象：加一个适配器（`index.html` 的 `GB_PROVIDERS` + `build.js` 的必填表 + config 换 options），页面逻辑零改动。
 
@@ -232,7 +230,7 @@ git push               # push 后 Actions 自动部署，几分钟后线上更�
 | 图片优化 | `sharp` (npm) | 构建时照片生成 480/960/1600 三档 × AVIF/WebP/JPEG，页面 `<picture>`+`srcset>` 按屏选档，手机端下载量减 3~6 倍 |
 | QR 码生成 | `qrcode` (npm) | 500px PNG，适合手机扫描 |
 | 前端页面 | 原生 HTML/CSS/JS | 单文件约 250 行，移动端优先 |
-| 留言板存储 | LeanCloud REST（原生 fetch） | 客户端只 POST 不 GET，provider 抽象便于换 Supabase 等 |
+| 留言板存储 | 腾讯云 CloudBase（云函数 Web 触发器 + 云数据库，原生 fetch） | 客户端只 POST 不 GET，云函数是唯一写入口，provider 抽象便于换 Supabase 等 |
 | 测试（dev） | `jsdom` + `jsqr` (npm) | pre-commit 自检：jsdom 跑真实 index.html 解锁流程，jsqr 解码 QR 内容 |
 | 托管 | GitHub Pages | 免费，全球 CDN |
 
@@ -289,7 +287,7 @@ git push               # push 后 Actions 自动部署，几分钟后线上更�
 3. **媒体路径**：`photo` 及答对后可见的 `images`/`videos` 在磁盘上大小写精确存在，且与 git 实际跟踪名一致（拦 macOS `core.ignorecase=true` 把文件名大小写搞反、上线 404 的坑）
 4. **QR 码**（测试三）：每个 `qrcodes/<id>.png` 存在、是有效 500×500 PNG、非空；并用 `jsqr` 解码，断言编码内容 == `baseUrl?id=<id>`
 5. **浏览器流程**（测试二）：用 `jsdom` 加载真实 `public/index.html`，模拟输入答案点击解锁——公开区直接渲染、错误答案提示「答案不正确」、正确答案解锁出 secret 区（能抓住 `index.html` 自身的解密参数/流程被改坏——Node 端解密查不出这个）
-6. **留言板**：构建产物一致性（`config.guestbook` ↔ `public/guestbook.json` 逐字段）+ 浏览器冒烟（公开祝福块显示含无收件人条目、空文本拦截不发请求、POST 的 URL/头/body 正确且不含公开写 ACL、成功反馈后可复用、失败保留输入可重试、解锁后信件回信归属收件人、disabled 时隐藏）
+6. **留言板**：构建产物一致性（`config.guestbook` ↔ `public/guestbook.json` 逐字段）+ 浏览器冒烟（公开祝福块显示含无收件人条目、空文本拦截不发请求、POST 的 URL/头/body 正确且不含权限字段、成功反馈后可复用、失败保留输入可重试、解锁后信件回信归属收件人、disabled 时隐藏）
 
 纯文档/代码类提交（不涉及 `public/`/`scripts/`/`.githooks/`）会自动跳过，不付出额外耗时。也可手动运行 `npm run verify`（与钩子内容相同）。
 

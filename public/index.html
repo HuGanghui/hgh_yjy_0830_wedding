@@ -598,23 +598,19 @@
 
   // ── 留言板存储适配器（provider 抽象，换后端只加一项） ──
   // 与 build.js 的 GB_PROVIDERS 表同构。每个 provider 声明必填字段与 submit(cfg, msg)。
-  // 安全模型：Class 权限 create=所有用户、find/get/update/delete=仅 master（控制台配置），
-  // 对象不授公开 ACL，客户端只 POST 不 GET——appId/appKey 是客户端密钥，公开进页面属设计接受。
+  // 当前实现 cloudbase：POST 到腾讯云云函数 Web 触发器（函数是唯一写入口，云数据库对客户端零权限），
+  // 纯 REST 零 SDK。函数代码见 cloudbase/guestbook/（处理 OPTIONS 预检 + 校验 + 写库 + CORS 头）。
   // 未来换 Supabase：加 { supabase: { required:['url','anonKey','table'], submit(cfg, msg) {
   //   return fetch(`${cfg.url}/rest/v1/${cfg.table}`, { method:'POST', headers:{
   //     'apikey': cfg.anonKey, 'Authorization': `Bearer ${cfg.anonKey}`, 'Content-Type':'application/json',
   //     'Prefer':'return=minimal' }, body: JSON.stringify(msg) }); } } }，并在控制台开 RLS「仅插入、禁止读」。
   const GB_PROVIDERS = {
-    leancloud: {
-      required: ['appId', 'appKey', 'serverURL', 'className'],
+    cloudbase: {
+      required: ['url'],
       submit(cfg, msg) {
-        return fetch(`${cfg.serverURL}/1.1/classes/${cfg.className}`, {
+        return fetch(cfg.url, {
           method: 'POST',
-          headers: {
-            'X-LC-Id': cfg.appId,
-            'X-LC-Key': cfg.appKey,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(msg)
         });
       }
@@ -869,7 +865,7 @@
     $btn.disabled = true;
     $btn.textContent = '提交中…';
     try {
-      // 只 POST 不 GET：对象不授公开 ACL，读取仅新人控制台（master key）
+      // 只 POST 不 GET：经云函数写库，读取仅新人控制台（云数据库对客户端零权限）
       const msg = {
         type: isPublic ? 'blessing' : 'letter',
         entryId,

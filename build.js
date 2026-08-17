@@ -20,11 +20,12 @@ const RASTER_EXTS = new Set([
 
 // ── 留言板（guestbook）：云数据库直写，provider 抽象 ──────────
 // 每个 provider 声明必填字段（与 public/index.html 的 GB_PROVIDERS 表同构，改一边要改另一边）。
-// 当前只实现 leancloud；换 supabase 只需：此表加一项 + index.html GB_PROVIDERS 加适配器 + config 换 options。
-// 安全模型：Class 权限 create=所有用户、find/get/update/delete=仅 master（控制台配置）；
-// 对象不授公开 ACL，客户端只 POST 不 GET——appId/appKey 是客户端密钥，公开进页面属设计接受。
+// 当前实现 cloudbase：POST 到腾讯云云函数 Web 触发器（函数是唯一写入口，云数据库对客户端零权限）。
+// 换 supabase 只需：此表加一项 + index.html GB_PROVIDERS 加适配器 + config 换 options。
+// 安全模型：云函数负责校验+写库；云数据库安全规则 read/write 全关，宾客只能经函数写入、无法读取；
+// 新人读取走 CloudBase 控制台/导出。函数代码见 cloudbase/guestbook/（可部署）。
 const GB_PROVIDERS = {
-  leancloud: { required: ['appId', 'appKey', 'serverURL', 'className'] }
+  cloudbase: { required: ['url'] }
 };
 
 // ── 生成不可猜测的随机文件名（secret 媒体用，不含扩展名） ──
@@ -275,7 +276,7 @@ async function main() {
   fs.writeFileSync('public/data.json', JSON.stringify(output), 'utf-8');
 
   // ── 写入 guestbook.json（留言板客户端配置；始终写出） ──
-  // enabled=false 表示留言功能关闭；有配置且合法才写客户端连接参数（appId/appKey 是客户端密钥）。
+  // enabled=false 表示留言功能关闭；有配置且合法才写客户端连接参数（云函数 Web 触发器 URL）。
   const gbOut = { enabled: false };
   const gb = config.guestbook;
   if (gb && gb.enabled === true) {
@@ -283,7 +284,7 @@ async function main() {
     if (!provider) {
       errors.push(`guestbook: 未知 provider「${gb.provider}」（支持: ${Object.keys(GB_PROVIDERS).join(', ')}）`);
     } else {
-      const opts = Object.assign({ className: 'Guestbook' }, gb.options || {});   // className 给默认值
+      const opts = Object.assign({}, gb.options || {});
       const missing = provider.required.filter(k => !opts[k]);
       if (missing.length) {
         errors.push(`guestbook.options 缺少字段: ${missing.join(', ')}`);
@@ -292,17 +293,18 @@ async function main() {
         gbOut.provider = gb.provider;
         gbOut.options = {};
         for (const k of provider.required) gbOut.options[k] = String(opts[k]).trim();
-        gbOut.options.serverURL = gbOut.options.serverURL.replace(/\/+$/, '');    // 基础域名，不含 /1.1
-        if (!/^https?:\/\//.test(gbOut.options.serverURL)) {
-          errors.push('guestbook.options.serverURL 须为 http(s):// 开头');
+        if (!/^https?:\/\//.test(gbOut.options.url)) {
+          errors.push('guestbook.options.url 须为 http(s):// 开头（云函数 Web 触发器地址）');
           gbOut.enabled = false;
+        } else {
+          gbOut.options.url = gbOut.options.url.replace(/\/+$/, '');
         }
       }
     }
   }
   fs.writeFileSync('public/guestbook.json', JSON.stringify(gbOut), 'utf-8');
   if (gbOut.enabled) {
-    console.log(`💬 guestbook: 已启用（${gbOut.provider}）→ POST ${gbOut.options.serverURL}/1.1/classes/${gbOut.options.className}`);
+    console.log(`💬 guestbook: 已启用（${gbOut.provider}）→ POST ${gbOut.options.url}`);
   }
 
   // ── 汇总 ─────────────────────────────────────
