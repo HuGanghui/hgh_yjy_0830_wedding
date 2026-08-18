@@ -234,13 +234,14 @@ function createDom(data, entryId, opts = {}) {
       // 背景音乐/视频的页面逻辑依赖 play() 返回 Promise；blockAutoplay 时「只拦首次自动播放」
       // 拒绝——真实浏览器/微信只拦带声音的 autoplay，用户手势触发的 play() 是放行的，
       // 以此模拟「自动播放被拦 → 首次手势启动成功」的完整链路。
-      const calls = window.__mediaCalls = { play: 0, pause: 0, blocked: !!opts.blockAutoplay };
+      const calls = window.__mediaCalls = { play: 0, pause: 0, blocked: !!opts.blockAutoplay, hang: !!opts.hangPlay };
       const ME = window.HTMLMediaElement;
       if (ME && ME.prototype) {
         ME.prototype.load = function () {};
         ME.prototype.pause = function () { calls.pause++; };
         ME.prototype.play = function () {
           calls.play++;
+          if (calls.hang) return new Promise(() => {});   // play() 永不 settle（模拟大文件 mp3 缓冲挂起）
           // 只拦「首次自动播放」：真实浏览器/微信只拦带声音的 autoplay，
           // 用户手势触发的 play() 是放行的（模拟「自动播放被拦 → 首次手势启动成功」的链路）。
           if (calls.blocked && calls.play === 1) {
@@ -922,6 +923,48 @@ async function checkBackgroundMusic(data) {
     pass('背景音乐: 无音乐条目音符按钮隐藏、不自动播放');
   } finally {
     domC.window.close();
+  }
+
+  // ── 场景 D：play() 挂起（大文件缓冲）→ 点击按钮立即进播放态反馈 ──
+  // 真实手机：9.6MB mp3 在弱网下首次 play() 会挂起十几秒等缓冲，若等 play() 结果才换 UI，
+  // 按钮全程无反馈 = 「点了没反应」。乐观反馈：点击瞬间先置播放态（音符旋转），不等缓冲。
+  const domD = createDom(withMusic, musicId, { hangPlay: true });
+  const winD = domD.window;
+  const docD = winD.document;
+  try {
+    if (!await waitFor(winD, () => docD.getElementById('public').classList.contains('active'))) {
+      fail('背景音乐: 挂起场景公开区未渲染'); return;
+    }
+    const $btnD = docD.getElementById('music-btn');
+    if (winD.__mediaCalls.play !== 1) { fail('背景音乐: 挂起场景进页应尝试自动播放 1 次'); return; }
+    if ($btnD.classList.contains('playing')) { fail('背景音乐: play 挂起时自动播放不应直接置播放态'); return; }
+    $btnD.click();
+    if (winD.__mediaCalls.play !== 2) { fail('背景音乐: 点击后应再次调用 play'); return; }
+    if (!$btnD.classList.contains('playing')) { fail('背景音乐: play 挂起时点击按钮应立即给播放态反馈'); return; }
+    pass('背景音乐: play() 挂起时点击按钮立即进入播放态（乐观反馈，不等缓冲）');
+  } finally {
+    domD.window.close();
+  }
+
+  // ── 场景 E：微信 WeixinJSBridgeReady 事件 → 补试自动播放（无需用户手势） ──
+  // 部分微信版本只在 WeixinJSBridge 就绪后才放行自动播放；页面监听该事件，触发时再试一次，
+  // 若被拦的那次已把 play 置为暂停态，补试成功即进入播放态。
+  const domE = createDom(withMusic, musicId, { blockAutoplay: true });
+  const winE = domE.window;
+  const docE = winE.document;
+  try {
+    if (!await waitFor(winE, () => docE.getElementById('public').classList.contains('active'))) {
+      fail('背景音乐: 微信 bridge 场景公开区未渲染'); return;
+    }
+    const $btnE = docE.getElementById('music-btn');
+    if (winE.__mediaCalls.play !== 1) { fail('背景音乐: bridge 场景应先有 1 次被拦的自动播放尝试'); return; }
+    docE.dispatchEvent(new winE.Event('WeixinJSBridgeReady'));
+    const bridged = await waitFor(winE, () =>
+      winE.__mediaCalls.play >= 2 && $btnE.classList.contains('playing'));
+    if (!bridged) { fail('背景音乐: WeixinJSBridgeReady 后应补试自动播放并进入播放态'); return; }
+    pass('背景音乐: WeixinJSBridgeReady 事件触发自动播放补试');
+  } finally {
+    domE.window.close();
   }
 }
 

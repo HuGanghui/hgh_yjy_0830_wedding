@@ -1299,8 +1299,10 @@
     $musicBtn.classList.toggle('paused', !playing);
   }
 
-  function tryPlayMusic() {
-    if (musicPlaying) return Promise.resolve(true);
+  // 真正调用 audio.play()：成功→播放态；被拦/失败→还原暂停态并返回 false。
+  // 大文件 mp3（如 9.6MB）在手机网络下 play() 可能挂起十几秒等缓冲——「乐观反馈」由
+  // toggleMusic 在调用前提前置为播放态，这里只负责按最终结果校正状态。
+  function doPlay() {
     let p;
     try { p = $bgAudio.play(); } catch (err) { p = Promise.reject(err); }   // 防 jsdom 等环境同步抛错
     return Promise.resolve(p).then(() => {
@@ -1312,12 +1314,20 @@
     });
   }
 
+  function tryPlayMusic() {
+    if (musicPlaying) return Promise.resolve(true);
+    return doPlay();
+  }
+
   function toggleMusic() {
     if (musicPlaying) {
       $bgAudio.pause();
       setMusicPlaying(false);
     } else {
-      tryPlayMusic();
+      // 乐观置播放态：点击立刻给反馈（音符旋转），不必等 play() 权限/缓冲——
+      // 否则大文件缓冲期间按钮毫无反应，看起来像「点了没反应」。
+      setMusicPlaying(true);
+      doPlay();
     }
   }
 
@@ -1327,6 +1337,23 @@
     $bgAudio.load();
     $musicBtn.style.display = 'inline-flex';
     $musicBtn.classList.add('paused');
+
+    // 微信内置浏览器：等 WeixinJSBridge 就绪后补试一次自动播放（部分微信版本只在 bridge 里放行）。
+    // 已就绪（window.WeixinJSBridge 存在）则直接试；tryPlayMusic 幂等，重复触发无副作用。
+    const weixinAutoplay = () => {
+      if (window.WeixinJSBridge) {
+        try { window.WeixinJSBridge.invoke('getNetworkType', {}, () => { tryPlayMusic(); }); }
+        catch (e) { tryPlayMusic(); }
+      } else {
+        tryPlayMusic();
+      }
+    };
+    if (window.WeixinJSBridge) weixinAutoplay();
+    else document.addEventListener('WeixinJSBridgeReady', function bridgeReady() {
+      document.removeEventListener('WeixinJSBridgeReady', bridgeReady);
+      weixinAutoplay();
+    }, false);
+
     tryPlayMusic().then(ok => { if (!ok) setupMusicGestureStart(); });
   }
 
@@ -1341,6 +1368,7 @@
       document.removeEventListener('touchend', start);
     };
     document.addEventListener('pointerdown', start);
+    document.addEventListener('touchstart', start);   // 部分 iOS/微信 WebView 不派发 pointerdown
     document.addEventListener('click', start);
     document.addEventListener('touchend', start);
   }
