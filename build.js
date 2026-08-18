@@ -34,8 +34,8 @@ function randomFileName() {
 }
 
 // ── 拷贝单个媒体文件到 public/media/<id>/<folder> ──
-// folder: 'photo'（公开，保留原文件名）| 'secret'（随机文件名）
-// 位图照片一律缩放+重压缩输出 .jpg（带透明通道的压平到卡片白底）；视频/SVG 原样拷贝。
+// folder: 'photo'（公开，保留原文件名）| 'music'（公开背景音乐，保留原文件名）| 'secret'（随机文件名）
+// 位图照片一律缩放+重压缩输出 .jpg（带透明通道的压平到卡片白底）；视频/音频/SVG 原样拷贝。
 // 优化失败自动回退为原样拷贝，保证构建永不因个别图片中断。
 async function copyMedia(srcPath, id, folder) {
   const absSrc = path.resolve(srcPath);
@@ -92,8 +92,8 @@ async function copyMedia(srcPath, id, folder) {
       console.warn(`  ⚠️  [${id}] 图片优化失败，已原样拷贝: ${err.message}`);
     }
   } else {
-    // 视频 / SVG 等：原样拷贝
-    const filename = folder === 'photo'
+    // 视频 / 音频 / SVG 等：原样拷贝（公开目录 photo/music 保留原文件名，secret 随机名防枚举）
+    const filename = folder === 'photo' || folder === 'music'
       ? path.basename(srcPath)
       : randomFileName() + ext;
     dest = path.join(outDir, filename);
@@ -125,7 +125,7 @@ async function main() {
   const errors = [];
 
   for (const entry of config.entries) {
-    const { id, to, question, answer, description, photo, secret } = entry;
+    const { id, to, question, answer, description, photo, music, secret } = entry;
 
     // 校验必填字段（to 可选；无收件人条目只需 id/description）
     if (!id || !description) {
@@ -158,6 +158,18 @@ async function main() {
         console.log(`  🖼️  [${id}] 公开照片: ${r.url} (${r.sizeKB} KB)`);
       } catch (err) {
         errors.push(`[${id}] 公开照片 ${photo}: ${err.message}`);
+      }
+    }
+
+    // ── 背景音乐（公开自动播放，保留原文件名） ──
+    let musicUrl = null;
+    if (music) {
+      try {
+        const r = await copyMedia(music, id, 'music');
+        musicUrl = r.url;
+        console.log(`  🎵 [${id}] 背景音乐: ${r.url} (${r.sizeKB} KB)`);
+      } catch (err) {
+        errors.push(`[${id}] 背景音乐 ${music}: ${err.message}`);
       }
     }
 
@@ -243,6 +255,7 @@ async function main() {
         description,
         photo: photoUrl,
         ...(photoW ? { photoW, photoH } : {}),
+        ...(musicUrl ? { music: musicUrl } : {}),
         letters: lettersOut
       };
     } else {
@@ -250,7 +263,7 @@ async function main() {
       if (question || answer || secret || (Array.isArray(entry.letters) && entry.letters.length === 0)) {
         errors.push(`[${id}] 无收件人条目仅展示照片+描述，已忽略 question/answer/secret/letters`);
       }
-      outEntry = { description, photo: photoUrl, ...(photoW ? { photoW, photoH } : {}) };
+      outEntry = { description, photo: photoUrl, ...(photoW ? { photoW, photoH } : {}), ...(musicUrl ? { music: musicUrl } : {}) };
     }
     output[id] = outEntry;
 
@@ -311,7 +324,7 @@ async function main() {
   console.log(`\n${'─'.repeat(50)}`);
   console.log(`📦 共处理 ${Object.keys(output).length} 个条目 → public/data.json`);
   console.log(`📁 QR 码: qrcodes/ 目录`);
-  console.log(`📷 媒体: public/media/<id>/ (公开照片 / secret 加密路径)`);
+  console.log(`📷 媒体: public/media/<id>/ (公开照片 / 背景音乐 / secret 加密路径)`);
 
   if (errors.length > 0) {
     console.log(`\n⚠️  警告/错误:`);

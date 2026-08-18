@@ -416,6 +416,35 @@
   .guestbook-msg.ok { color: var(--success); }
   .guestbook-msg.error { color: var(--error); }
 
+  /* ── 背景音乐控制：浮动音符按钮（婚礼邀请函经典样式） ── */
+  #bg-music { display: none; }               /* 原生 audio 隐藏，控制交给浮动按钮 */
+  .music-btn {
+    position: fixed;
+    top: max(14px, env(safe-area-inset-top));
+    right: max(14px, env(safe-area-inset-right));
+    z-index: 900;                             /* 高于卡片/花瓣，低于 lightbox */
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid #f0c6c3;
+    background: linear-gradient(135deg, #fdeeee, #f8dcd8);
+    box-shadow: var(--shadow);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-appearance: none;
+    transition: transform 0.2s;
+  }
+  .music-btn svg {
+    width: 22px;
+    height: 22px;
+    fill: #c96a6f;
+  }
+  .music-btn:active { transform: scale(0.92); }
+  .music-btn.playing { animation: spin 4s linear infinite; }   /* 播放时旋转（复用 @keyframes spin） */
+  .music-btn.paused svg { opacity: 0.55; }                     /* 暂停态：音符变淡提示未播放 */
+
   /* ── 动效：花瓣飘落（零依赖） ── */
   #petals {
     position: fixed;
@@ -439,6 +468,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     #petals { display: none; }   /* 尊重「减弱动态效果」系统设置 */
+    .music-btn.playing { animation: none; }   /* 音符不再旋转，但播放功能保留 */
   }
 </style>
 </head>
@@ -590,6 +620,12 @@
 <!-- ═══ 花瓣飘落：扫码进页全程氛围（纯装饰） ═══ -->
 <div id="petals" aria-hidden="true"></div>
 
+<!-- ═══ 背景音乐：隐藏 audio + 浮动音符控制按钮（有 music 字段的条目才显示） ═══ -->
+<audio id="bg-music" loop preload="auto"></audio>
+<button id="music-btn" class="music-btn paused" style="display:none" aria-label="播放/暂停背景音乐">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+</button>
+
 <script>
 (async function () {
   // 尊重系统「减弱动态效果」；jsdom 无 matchMedia（守卫返回 undefined）→ 默认 false 即开启动效
@@ -636,6 +672,9 @@
   const $secretImages = document.getElementById('secret-images');
   const $secretVideos = document.getElementById('secret-videos');
   const $stateErrMsg  = document.getElementById('state-error-msg');
+  const $bgAudio      = document.getElementById('bg-music');
+  const $musicBtn     = document.getElementById('music-btn');
+  let musicPlaying = false;   // 背景音乐播放状态（true=播放中，音符旋转）
   const $guestbookPublic = document.getElementById('guestbook-public');
   const $gbNamePublic  = document.getElementById('guest-name-public');
   const $gbTextPublic  = document.getElementById('guest-text-public');
@@ -700,6 +739,7 @@
     $loading.style.display = 'none';
     $public.classList.add('active');
     startPetals();                       // 扫码进页：花瓣全程飘落（婚礼氛围）
+    initMusic(entry.music);              // 背景音乐：自动播放，被拦则首次手势启动
     if (isGated) $answer.focus();
 
     // 留言板：公开祝福对所有条目（含无收件人）都显示；裸地址页 #public 不 active，随父容器隐藏
@@ -1121,6 +1161,63 @@
     if ($petals) $petals.innerHTML = '';
   }
 
+  // ── 背景音乐（婚礼邀请函经典样式） ──────────
+  // 进页先尝试带声音自动播放；浏览器/微信默认拦截「带声音的 autoplay」→ 被拒后等用户首次手势
+  // （点页面任意处）启动；右上角音符按钮随时切换播放/暂停，播放时音符旋转。
+  // musicPlaying 状态声明在顶部 DOM 引用区（render 处 initMusic 在 fetch await 后才调用）。
+
+  function setMusicPlaying(playing) {
+    musicPlaying = playing;
+    $musicBtn.classList.toggle('playing', playing);
+    $musicBtn.classList.toggle('paused', !playing);
+  }
+
+  function tryPlayMusic() {
+    if (musicPlaying) return Promise.resolve(true);
+    let p;
+    try { p = $bgAudio.play(); } catch (err) { p = Promise.reject(err); }   // 防 jsdom 等环境同步抛错
+    return Promise.resolve(p).then(() => {
+      setMusicPlaying(true);
+      return true;
+    }).catch(() => {
+      setMusicPlaying(false);     // 自动播放被拦（NotAllowedError），等用户手势
+      return false;
+    });
+  }
+
+  function toggleMusic() {
+    if (musicPlaying) {
+      $bgAudio.pause();
+      setMusicPlaying(false);
+    } else {
+      tryPlayMusic();
+    }
+  }
+
+  function initMusic(src) {
+    if (!src) return;
+    $bgAudio.src = src;
+    $bgAudio.load();
+    $musicBtn.style.display = 'inline-flex';
+    $musicBtn.classList.add('paused');
+    tryPlayMusic().then(ok => { if (!ok) setupMusicGestureStart(); });
+  }
+
+  // 一次性全局手势兜底：autoplay 被拦时，用户点页面任意处即启动音乐（微信等要求用户交互）。
+  // 点在音符按钮上不重复处理（按钮自己的 click 会切换），避免「刚点按钮又立刻暂停」。
+  function setupMusicGestureStart() {
+    const start = (e) => {
+      if (e.target === $musicBtn || ($musicBtn.contains && $musicBtn.contains(e.target))) return;
+      tryPlayMusic();
+      document.removeEventListener('pointerdown', start);
+      document.removeEventListener('click', start);
+      document.removeEventListener('touchend', start);
+    };
+    document.addEventListener('pointerdown', start);
+    document.addEventListener('click', start);
+    document.addEventListener('touchend', start);
+  }
+
   // ── Bind events ──────────────────────────────
   $photo.addEventListener('click', () => {
     if ($photoWrap.style.display === 'block') openLightbox($photo.src);
@@ -1129,6 +1226,7 @@
   $answer.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') tryUnlock();
   });
+  $musicBtn.addEventListener('click', toggleMusic);
   $gbBtnPublic.addEventListener('click', () => submitMessage('public'));
   $gbBtnReply.addEventListener('click', () => submitMessage('reply'));
 

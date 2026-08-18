@@ -18,7 +18,7 @@ QR 码加密解锁系统，**一种入口（二维码直达）**：
 - 任何修改、新增、删除文件，完成一个逻辑单元后立即 `git add` + `git commit`，不允许改动长期停留在工作区。
 - 提交前先 `git status` 和 `git diff`，确认只包含预期改动，绝不误提交 `config.json`（含答案/密钥）和 `qrcodes/`（QR 码）——见下方「Git 约定」。
 - 提交信息使用中文、动词开头的描述性写法（参考现有 commit 风格），例如 `feat: 新增视频内容支持`、`fix: 修复答案含中文空格时解密失败`。
-- **提交前自动自检**：仓库启用 pre-commit 钩子（`.githooks/pre-commit`，已提交入库）——暂存区涉及 `public/`（构建产物）/ `scripts/` / `.githooks/` 时，`git commit` 自动运行 `node scripts/verify.js`（① config↔data.json 条目互查 ② 真实收信码解密校验 + 错误收信码被拒 ③ 媒体路径磁盘/git 大小写校验 ④ QR 码 PNG 完整性 + jsqr 解码内容 ⑤ jsdom 跑真实 index.html 解锁流程冒烟 ⑥ Lightbox 图片放大预览 + 下载 ⑦ 一码多信（同一二维码多收件人，demo：A-05 花花/梁雪/小童 三码三信）⑧ 动效冒烟（花瓣进页飘落，不影响解锁流程）⑨ 留言板（guestbook.json 与 config 一致性 + 浏览器提交祝福/回信冒烟，含公开块显示/空拦截/POST 请求断言/失败重试/disabled 隐藏）），任一失败**阻止提交**；纯文档提交自动跳过。⚠️ 该钩子靠 `git config core.hooksPath .githooks` 生效（配置不随克隆走），**新环境必须先执行这句**，否则钩子不生效。
+- **提交前自动自检**：仓库启用 pre-commit 钩子（`.githooks/pre-commit`，已提交入库）——暂存区涉及 `public/`（构建产物）/ `scripts/` / `.githooks/` 时，`git commit` 自动运行 `node scripts/verify.js`（① config↔data.json 条目互查 ② 真实收信码解密校验 + 错误收信码被拒 ③ 媒体路径磁盘/git 大小写校验 ④ QR 码 PNG 完整性 + jsqr 解码内容 ⑤ jsdom 跑真实 index.html 解锁流程冒烟 ⑥ Lightbox 图片放大预览 + 下载 ⑦ 一码多信（同一二维码多收件人，demo：A-05 花花/梁雪/小童 三码三信）⑧ 动效冒烟（花瓣进页飘落，不影响解锁流程）⑨ 留言板（guestbook.json 与 config 一致性 + 浏览器提交祝福/回信冒烟，含公开块显示/空拦截/POST 请求断言/失败重试/disabled 隐藏）⑩ 背景音乐（有 music 条目 → 音符按钮显示/audio.src 指向/进页自动播放旋转/点按钮切换；自动播放被拦 → 首次手势兜底；无 music → 按钮隐藏）），任一失败**阻止提交**；纯文档提交自动跳过。⚠️ 该钩子靠 `git config core.hooksPath .githooks` 生效（配置不随克隆走），**新环境必须先执行这句**，否则钩子不生效。
 - **较大功能改动用测试兜底**：新增或修改功能（尤其是 `public/index.html` 里的交互/逻辑）时，必须同步在 `scripts/verify.js` 中补充对应的自检测试（如解锁流程、Lightbox 的 DOM 冒烟），与代码**一并提交**；仅纯文档或样式微调可豁免。新测试未过不得提交。
 
 ## 常用命令
@@ -64,13 +64,14 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
     "photo": "media/<id>/photo/xxx.jpg",   // 位图照片为 1600px 回退档；SVG 照片原样
     "photoW": 1600,   // 可选：输出照片宽高（页面据此占位，防加载时布局跳动）
     "photoH": 2133,
+    "music": "media/<id>/music/xxx.mp3",   // 可选：公开背景音乐（扫码自动播放，保留原文件名）
     "letters": [      // 门禁条目：每封信各自加密（答案即该收件人的密钥）
       { "to": "收件人", "salt": "Base64 的 16 字节随机盐", "data": "Base64 的 [iv(12) || GCM密文 || authTag(16)]" }
     ]
   }
 }
 ```
-**无收件人条目**（config 省略 `to`/`letters`）在 `data.json` 中只有 `description` 与 `photo` 两个字段，不加密、无 `letters`——页面据此（`entry.letters` 是否存在且非空）判断是否渲染问题与解锁区。config 顶层 `to`/`answer`/`secret` 简写等价于 `letters` 单元素，构建时归一化。
+**无收件人条目**（config 省略 `to`/`letters`）在 `data.json` 中只有 `description` 与 `photo` 两个字段（可选加 `music`），不加密、无 `letters`——页面据此（`entry.letters` 是否存在且非空）判断是否渲染问题与解锁区。config 顶层 `to`/`answer`/`secret` 简写等价于 `letters` 单元素，构建时归一化。
 
 解密后的 payload（额外内容）：
 ```json
@@ -78,9 +79,10 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 ```
 
 **关键点：**
-- 媒体由 `build.js` 的 `copyMedia()` 拷贝到 `public/media/<id>/`：公开照片放 `photo/`（保留原文件名），secret 图片/视频放 `secret/`（文件名随机：`crypto.randomBytes(16).toString('hex')` + 扩展名）。data.json 只存路径。**每次构建会先清空整个 `public/media/` 和 `qrcodes/`**，保证产物与 config 严格一致、不残留旧文件（避免过期 QR 码被误发）。
+- 媒体由 `build.js` 的 `copyMedia()` 拷贝到 `public/media/<id>/`：公开照片放 `photo/`（保留原文件名）、公开背景音乐放 `music/`（保留原文件名，config 用 `music` 字段声明，data.json 写明文路径），secret 图片/视频放 `secret/`（文件名随机：`crypto.randomBytes(16).toString('hex')` + 扩展名）。data.json 只存路径。**每次构建会先清空整个 `public/media/` 和 `qrcodes/`**，保证产物与 config 严格一致、不残留旧文件（避免过期 QR 码被误发）。
 - **照片自动优化（响应式）**：位图照片（jpg/jpeg/png/webp/heic 等）构建时经 `sharp` 摆正（EXIF）并生成 **480/960/1600 三档 × AVIF(q45)/WebP(q80)/JPEG(q75 渐进)**，带透明通道的压平到白底；`photo/<base>.jpg` 是 1600px 回退档。页面 `index.html` 用 `<picture>`+`srcset>` 按屏幕/DPR 选档，手机端只下载 ~60-220KB（实测最重的照片从 584KB 降到 WebP 216KB / AVIF 86KB）。secret 图片答对后才显示，保持单档 JPEG。视频与 SVG 原样拷贝；优化失败自动回退原样拷贝。相机原图动辄 5-11MB。源文件在 `assets/` 不受影响。
   - ⚠️ 变体文件名约定：`photo/<base>-480|960|1600.(jpg|webp|avif)`，`index.html` 据此拼 URL，`scripts/verify.js` 会校验变体齐全（改约定要两边同步）。
+- **背景音乐（`music`）**：config 条目可选 `music` 字段（公开媒体路径），构建拷贝到 `public/media/<id>/music/`（保留原文件名）、data.json 写明文路径。扫码进页自动播放——右上角浮动音符按钮（播放时旋转），浏览器/微信拦截「带声音 autoplay」时首次点击页面任意处启动，按钮随时切换播放/暂停。无 `music` 字段的条目不显示按钮。有/无收件人条目均可配。
 - secret 的 `text` 加密进每封信的 `data` 字段；公开字段（`question`/`description`/`photo`）为明文。`to` **可选**：无特定收件人的照片可省略，页面不显示「To 某人」标签；**有收件人**（含一码多信）公开区 To 标签**并列展示全部收件人**——单收件人「To 某人」、多收件人如「To 花花 / 梁雪 / 小童」（`index.html` 用 `entry.letters.map(l => l.to).join(' / ')` 拼）。
 - **有无收件人（letters 非空）决定是否为解锁条目**：有收件人 → 必有 `question`，每封信必有 `to`/`answer`/`secret`，额外内容分别用各自 answer 加密（`build.js` 校验并加密）；无收件人 → 仅照片+描述，`question`/`answer`/`secret`/`letters` 被忽略并告警，不产出 `letters`。
 - **secret 媒体是 `public/` 下可直链的静态文件**——路径随机只是防枚举的缓解，不是真正的机密性（用户已接受该取舍）。⚠️ **仓库已公开**（GitHub Pages 免费方案要求公开仓库）：`public/media/<id>/secret/` 里的 secret 文件，任何人可直接浏览仓库下载——随机名只防「猜 URL」，不防「逛仓库」（`assets/` 源文件已 gitignore、不入库）。用户已知悉并选择接受（曾考虑媒体加密方案，暂缓）。若日后要真保密，改走「build 加密媒体 + 浏览器解密」方案。图片/视频加载用 `<img>` / `<video controls preload="metadata">` 直链，**已无 Blob URL 逻辑**。

@@ -24,6 +24,8 @@
 //       POST URL/头/body 正确且不含权限字段、成功反馈后可复用、失败保留输入可重试；
 //       解锁门禁条目后信件回信块显示、body 归属收件人；disabled 时公开块隐藏。
 //       ⚠️ 服务端权限（云数据库安全规则）的强制力无法在 jsdom 测（无真实网络），靠控制台配置 + 手动 curl 验证。
+//   13. 背景音乐冒烟（jsdom，测试二内）：有 music 条目 → 音符按钮显示/audio.src 指向/进页自动播放（旋转）、
+//       点按钮暂停→恢复；自动播放被拦（浏览器/微信）→ 首次手势兜底启动；无 music 条目 → 按钮隐藏不播放。
 //
 // 安全约定：只输出 pass/fail，绝不打印答案、绝不打印解密后的明文内容。任一失败 → 非 0 退出。
 
@@ -191,8 +193,10 @@ async function checkQRCodes(config) {
 // 页面脚本 fetch('data.json') 从本地磁盘喂给它；jsdom 没有 crypto.subtle，换成 Node 的
 // 原生 WebCrypto（同一套 PBKDF2/AES-GCM）；压掉「答案不正确」的 console.error（预期行为）。
 // opts（可选，向后兼容）：
-//   guestbook — 注入 public/guestbook.json 的返回内容（默认读磁盘产物，缺失 → {enabled:false}）
-//   onFetch   — 拦截页面发出的绝对 http(s) 请求（如云函数 POST，jsdom 无真实网络），返回 mock 响应
+//   guestbook     — 注入 public/guestbook.json 的返回内容（默认读磁盘产物，缺失 → {enabled:false}）
+//   onFetch       — 拦截页面发出的绝对 http(s) 请求（如云函数 POST，jsdom 无真实网络），返回 mock 响应
+//   blockAutoplay — true 时 HTMLMediaElement.play() 拒绝（模拟浏览器/微信拦截「带声音的自动播放」），
+//                   用于测背景音乐「首次手势兜底启动」路径
 function createDom(data, entryId, opts = {}) {
   const html = fs.readFileSync('public/index.html', 'utf-8');
   const guestbook = opts.guestbook !== undefined
@@ -220,6 +224,26 @@ function createDom(data, entryId, opts = {}) {
         return { ok: true, status: 200, json: async () => data };
       };
       Object.defineProperty(window, 'crypto', { value: require('crypto').webcrypto, configurable: true });
+
+      // jsdom 不实现媒体播放：打桩 HTMLMediaElement 的 load/play/pause（记录调用、不真播）。
+      // 背景音乐/视频的页面逻辑依赖 play() 返回 Promise；blockAutoplay 时「只拦首次自动播放」
+      // 拒绝——真实浏览器/微信只拦带声音的 autoplay，用户手势触发的 play() 是放行的，
+      // 以此模拟「自动播放被拦 → 首次手势启动成功」的完整链路。
+      const calls = window.__mediaCalls = { play: 0, pause: 0, blocked: !!opts.blockAutoplay };
+      const ME = window.HTMLMediaElement;
+      if (ME && ME.prototype) {
+        ME.prototype.load = function () {};
+        ME.prototype.pause = function () { calls.pause++; };
+        ME.prototype.play = function () {
+          calls.play++;
+          // 只拦「首次自动播放」：真实浏览器/微信只拦带声音的 autoplay，
+          // 用户手势触发的 play() 是放行的（模拟「自动播放被拦 → 首次手势启动成功」的链路）。
+          if (calls.blocked && calls.play === 1) {
+            return Promise.reject(new Error('NotAllowedError: autoplay blocked'));
+          }
+          return Promise.resolve();
+        };
+      }
     }
   });
 }
@@ -788,6 +812,95 @@ async function checkPetalsEffect(data, configById) {
   }
 }
 
+// ── 背景音乐冒烟（浏览器流程的一部分） ────────────────────
+// 有 music 字段的条目：浮动音符按钮显示、audio.src 指向音乐、进页自动播放（按钮旋转）；
+// 点按钮暂停→恢复；自动播放被拦（浏览器/微信）→ 首次手势（点页面任意处）兜底启动。
+// 无 music 字段的条目：按钮隐藏、不触发播放。
+async function checkBackgroundMusic(data) {
+  const musicId = '__music_test__';
+  const musicPath = 'media/__music_test__/music/test.mp3';
+  // 合成一个带背景音乐的无收件人条目（真实数据暂无音乐条目时也能测；逻辑与数据解耦）
+  const withMusic = Object.assign({}, data, {
+    [musicId]: { description: '背景音乐测试条目', music: musicPath }
+  });
+
+  // ── 场景 A：正常自动播放 ──
+  const dom = createDom(withMusic, musicId);
+  const win = dom.window;
+  const doc = win.document;
+  try {
+    if (!await waitFor(win, () => doc.getElementById('public').classList.contains('active'))) {
+      fail('背景音乐: 音乐条目公开区未渲染'); return;
+    }
+    const $btn = doc.getElementById('music-btn');
+    const $audio = doc.getElementById('bg-music');
+    if ($btn.style.display === 'none') { fail('背景音乐: 音乐条目音符按钮未显示'); return; }
+    pass('背景音乐: 音乐条目浮动音符按钮显示');
+    if (!$audio.getAttribute('src') || $audio.getAttribute('src').indexOf(musicPath) === -1) {
+      fail(`背景音乐: audio.src 应为 ${musicPath} → 实际 ${$audio.getAttribute('src')}`);
+    } else {
+      pass('背景音乐: audio.src 指向背景音乐文件');
+    }
+    if (win.__mediaCalls.play !== 1) { fail(`背景音乐: 进页应尝试自动播放 1 次（实际 ${win.__mediaCalls.play}）`); return; }
+    if (!$btn.classList.contains('playing')) { fail('背景音乐: 自动播放成功后按钮应为旋转（playing）态'); return; }
+    pass('背景音乐: 进页自动播放成功，音符按钮旋转');
+
+    // 点按钮 → 暂停；再点 → 恢复播放
+    $btn.click();
+    if (win.__mediaCalls.pause !== 1) { fail('背景音乐: 点按钮未暂停'); return; }
+    if ($btn.classList.contains('playing')) { fail('背景音乐: 暂停后按钮仍为 playing 态'); return; }
+    pass('背景音乐: 点按钮暂停（音符停转）');
+    $btn.click();
+    if (win.__mediaCalls.play !== 2) { fail('背景音乐: 再点按钮未恢复播放'); return; }
+    // play() 返回的 Promise 在微任务里才把按钮置回 playing 态，需轮询等待
+    const resumed = await waitFor(win, () => $btn.classList.contains('playing'));
+    if (!resumed) { fail('背景音乐: 恢复播放后按钮未回到 playing 态'); return; }
+    pass('背景音乐: 再点按钮恢复播放');
+  } finally {
+    dom.window.close();
+  }
+
+  // ── 场景 B：自动播放被拦 → 首次手势启动（微信/浏览器兜底） ──
+  const domB = createDom(withMusic, musicId, { blockAutoplay: true });
+  const winB = domB.window;
+  const docB = winB.document;
+  try {
+    if (!await waitFor(winB, () => docB.getElementById('public').classList.contains('active'))) {
+      fail('背景音乐: 被拦场景公开区未渲染'); return;
+    }
+    const $btnB = docB.getElementById('music-btn');
+    if (winB.__mediaCalls.play !== 1) { fail('背景音乐: 被拦场景应尝试过自动播放'); return; }
+    if (!$btnB.classList.contains('paused')) { fail('背景音乐: 被拦后按钮应为暂停态（未播放）'); return; }
+    pass('背景音乐: 自动播放被拦 → 按钮暂停态，等待用户手势');
+    // 点页面任意处（非按钮）→ 音乐启动（手势兜底）
+    // ⚠️ 等「playing 类」而非 play 计数：play() 由 stub 同步计数，但 setMusicPlaying(true)
+    //    在 window 微任务里执行，等类出现才说明状态真正生效（与「再点恢复播放」同理）。
+    docB.dispatchEvent(new winB.MouseEvent('click', { bubbles: true, cancelable: true }));
+    const gestureStarted = await waitFor(winB, () =>
+      winB.__mediaCalls.play >= 2 && $btnB.classList.contains('playing'));
+    if (!gestureStarted) { fail('背景音乐: 手势启动后按钮应为 playing 态'); return; }
+    pass('背景音乐: 被拦后首次点页面任意处启动');
+  } finally {
+    domB.window.close();
+  }
+
+  // ── 场景 C：无音乐条目 → 按钮隐藏、不播放 ──
+  const plainId = Object.keys(data).find(id => data[id] && !data[id].music);
+  if (!plainId) { pass('背景音乐: 当前数据所有条目都带音乐，跳过隐藏校验'); return; }
+  const domC = createDom(data, plainId);
+  const winC = domC.window;
+  const docC = winC.document;
+  try {
+    await waitFor(winC, () => docC.getElementById('public').classList.contains('active'));
+    const btnC = docC.getElementById('music-btn');
+    if (btnC.style.display !== 'none') { fail('背景音乐: 无音乐条目音符按钮不应显示'); return; }
+    if (winC.__mediaCalls.play !== 0) { fail('背景音乐: 无音乐条目不应触发播放'); return; }
+    pass('背景音乐: 无音乐条目音符按钮隐藏、不自动播放');
+  } finally {
+    domC.window.close();
+  }
+}
+
 // ── 入口 ───────────────────────────────────────────────
 async function main() {
   console.log('🔍 构建产物自检');
@@ -861,6 +974,8 @@ async function main() {
       checkMediaPath(entry.photo, tracked);
       checkPhotoVariants(entry.photo);
     }
+    // 背景音乐（公开自动播放，保留原文件名）媒体路径
+    if (entry.music) checkMediaPath(entry.music, tracked);
 
     // 无收件人条目：仅公开内容，无解密环节
     const letters = Array.isArray(entry.letters) ? entry.letters : [];
@@ -943,6 +1058,9 @@ async function main() {
 
   section('动效 · 花瓣飘落');
   await checkPetalsEffect(data, configById);
+
+  section('背景音乐 · 自动播放/手势兜底');
+  await checkBackgroundMusic(data);
 
   section('总结');
   console.log(`共 ${checks} 项检查，失败 ${failures} 项`);

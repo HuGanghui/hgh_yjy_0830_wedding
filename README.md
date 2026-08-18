@@ -143,12 +143,13 @@ cp config.example.json config.json
 | `entries[].question` | 否\* | 扫码后显示的问题。**\*仅当有 `to` 收件人时必填**——有收件人才有解锁环节 |
 | `entries[].answer` | 否\* | 正确答案，也是解密密钥，不会被存储到任何地方。**\*仅当有 `to` 收件人时必填** |
 | `entries[].photo` | 否 | 公开照片路径，扫码直接可见，复制到 `public/media/<id>/photo/` |
+| `entries[].music` | 否 | 公开背景音乐路径（mp3/m4a 等），扫码自动播放，复制到 `public/media/<id>/music/`（保留原文件名）。自动播放被浏览器/微信拦截时，首次点击页面任意处启动；右上角音符按钮随时切换播放/暂停 |
 | `entries[].description` | 是 | 公开文字，描述这张照片（无 `to` 的条目只需此项 + `photo`） |
 | `entries[].secret.text` | 否 | 答对后显示的额外段落（仅当有 `to` 收件人时使用） |
 | `entries[].secret.images` | 否 | 答对后显示的图片路径数组，复制到 `public/media/<id>/secret/`（随机文件名，仅当有 `to` 时使用） |
 | `entries[].secret.videos` | 否 | 答对后显示的视频路径数组，同上（仅当有 `to` 时使用） |
 
-**无收件人条目**：若照片没有特定收件人，省略 `to` 字段即可。此时条目只需 `id` / `photo` / `description`，页面扫码后**只显示照片与描述**，不出现问题、答案输入框和解锁按钮，也没有额外内容（`question` / `answer` / `secret` 会被构建脚本忽略并提示）。这类条目的 QR 码同样生成，便于把所有照片一次性分享出去。
+**无收件人条目**：若照片没有特定收件人，省略 `to` 字段即可。此时条目只需 `id` / `photo` / `description`，页面扫码后**只显示照片与描述**（可再加 `music` 配背景音乐），不出现问题、答案输入框和解锁按钮，也没有额外内容（`question` / `answer` / `secret` 会被构建脚本忽略并提示）。这类条目的 QR 码同样生成，便于把所有照片一次性分享出去。
 
 ### 启用留言板（可选）：让朋友写祝福 / 回信
 
@@ -187,7 +188,7 @@ npm run build
 构建后：
 - `qrcodes/` 目录下生成每个条目的 QR 码 PNG（构建前清空，保证与 config 一致、无残留）
 - `public/data.json` 写入数据（公开字段明文 + 额外内容加密）
-- `public/media/<id>/` 拷贝媒体：公开照片保留原文件名（自动生成 480/960/1600 三档 × AVIF/WebP/JPEG，页面按屏幕选档，扩展名统一为 `.jpg` 回退，带透明通道的压平到白底），secret 图片/视频使用随机文件名
+- `public/media/<id>/` 拷贝媒体：公开照片保留原文件名（自动生成 480/960/1600 三档 × AVIF/WebP/JPEG，页面按屏幕选档，扩展名统一为 `.jpg` 回退，带透明通道的压平到白底），公开背景音乐保留原文件名（`music/`），secret 图片/视频使用随机文件名
 
 ### 4. 部署到 GitHub Pages
 
@@ -245,19 +246,21 @@ git push               # push 后 Actions 自动部署，几分钟后线上更�
     "question": "显示给扫码者的问题",
     "description": "公开描述文字",
     "photo": "media/<id>/photo/xxx.jpg",
+    "music": "media/<id>/music/xxx.mp3",   // 可选：公开背景音乐，扫码自动播放
     "salt": "Base64 编码的 16 字节随机盐",
     "data": "Base64 编码的 [IV(12字节) || AES-GCM密文 || 认证标签(16字节)]"
   }
 }
 ```
 
-**无收件人条目**（config 中省略 `to`）在 `data.json` 中只有 `description` 与 `photo` 两个字段，不加密、不生成 `salt`/`data`：
+**无收件人条目**（config 中省略 `to`）在 `data.json` 中只有 `description` 与 `photo` 两个字段（可选加 `music`），不加密、不生成 `salt`/`data`：
 
 ```json
 {
   "<id>": {
     "description": "公开描述文字",
-    "photo": "media/<id>/photo/xxx.jpg"
+    "photo": "media/<id>/photo/xxx.jpg",
+    "music": "media/<id>/music/xxx.mp3"
   }
 }
 ```
@@ -272,7 +275,7 @@ git push               # push 后 Actions 自动部署，几分钟后线上更�
 }
 ```
 
-`to` / `question` / `description` / `photo` 为公开字段，扫码即可见（`to` 可选：无特定收件人的条目省略该字段，页面不显示 To 标签）。`data` 中加密的是额外内容：`text` 为文字，`images` / `videos` 为构建时拷贝到 `public/media/<id>/secret/` 的静态文件路径（随机文件名）。浏览器答对后解密得到这些路径，用 `<img>` / `<video>` 直接加载渲染。
+`to` / `question` / `description` / `photo` / `music` 为公开字段，扫码即可见（`to` 可选：无特定收件人的条目省略该字段，页面不显示 To 标签）。`music` 为可选背景音乐，扫码进页自动播放（浏览器/微信拦截时首次点击任意处启动），右上角音符按钮切换播放/暂停。`data` 中加密的是额外内容：`text` 为文字，`images` / `videos` 为构建时拷贝到 `public/media/<id>/secret/` 的静态文件路径（随机文件名）。浏览器答对后解密得到这些路径，用 `<img>` / `<video>` 直接加载渲染。
 
 ## 本地验证测试
 
