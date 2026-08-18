@@ -565,7 +565,7 @@
     border-radius: 88% 12% 88% 12%;   /* 花瓣形：对角不对称圆角 */
     opacity: 0;
     will-change: transform, opacity;
-    animation: petal-fall linear infinite;   /* 时长/延迟由 JS 逐片设定 */
+    animation: petal-fall linear 1 both;     /* 单程：每片只落一趟（打开后落一阵即停），时长/延迟由 JS 逐片设定 */
   }
   @keyframes petal-fall {
     0%   { transform: translate3d(0, -6vh, 0) rotate(0deg); opacity: 0; }
@@ -862,7 +862,7 @@
 
     $loading.style.display = 'none';
     $public.classList.add('active');
-    startPetals();                       // 扫码进页：花瓣全程飘落（婚礼氛围）
+    startPetals();                       // 扫码进页：花瓣落一阵即停（婚礼氛围）
     initMusic(entry.music);              // 背景音乐：自动播放，被拦则首次手势启动
     initLyrics(entry.lyrics);            // 歌词：随背景音乐同步滚动（有 lyrics 字段才有）
     if (isGated) $answer.focus();
@@ -1260,15 +1260,18 @@
   });
 
   // ── 动效：花瓣飘落（零依赖） ───────────────
-  // 扫码进页全程飘落。DOM 元素 + CSS 动画无限循环，负 delay 让打开瞬间已铺满半空。
+  // 扫码进页落一阵即停：负 delay 让打开瞬间已铺满半空，每片花瓣只落一趟（CSS 单程动画），
+  // 最迟 ~18s 全部落完，随后定时清理 DOM——不再全程持续飘落。
   function startPetals() {
     if (reduceMotion) return;
     const $petals = document.getElementById('petals');
     if (!$petals || $petals.childElementCount > 0) return;   // 已启动，幂等
     const n = Math.min(22, Math.max(14, Math.floor(innerWidth / 36)));   // 按屏宽自适应密度
+    let maxDur = 0;
     for (let i = 0; i < n; i++) {
       const size = 12 + Math.random() * 14;                  // 12–26px
       const dur = 9 + Math.random() * 9;                     // 9–18s 一程
+      maxDur = Math.max(maxDur, dur);
       const p = document.createElement('span');
       p.className = 'petal';
       p.style.cssText = [
@@ -1282,6 +1285,8 @@
       ].join(';');
       $petals.appendChild(p);
     }
+    // 单程动画全部落完后清理 DOM（每片最多 18s，末尾留 1.5s 缓冲；try 兜底页面已关闭等场景）
+    setTimeout(() => { try { stopPetals(); } catch (e) {} }, maxDur * 1000 + 1500);
   }
   function stopPetals() {
     const $petals = document.getElementById('petals');
