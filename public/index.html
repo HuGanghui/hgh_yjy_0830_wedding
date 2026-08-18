@@ -1261,7 +1261,7 @@
 
   // ── 动效：花瓣飘落（零依赖） ───────────────
   // 扫码进页落一阵即停：负 delay 让打开瞬间已铺满半空，每片花瓣只落一趟（CSS 单程动画），
-  // 最迟 ~18s 全部落完，随后定时清理 DOM——不再全程持续飘落。
+  // 最迟 ~10s 全部落完，随后定时清理 DOM——不再全程持续飘落。
   function startPetals() {
     if (reduceMotion) return;
     const $petals = document.getElementById('petals');
@@ -1270,7 +1270,7 @@
     let maxDur = 0;
     for (let i = 0; i < n; i++) {
       const size = 12 + Math.random() * 14;                  // 12–26px
-      const dur = 9 + Math.random() * 9;                     // 9–18s 一程
+      const dur = 8 + Math.random() * 2;                     // 8–10s 一程（打开后约 10s 落完）
       maxDur = Math.max(maxDur, dur);
       const p = document.createElement('span');
       p.className = 'petal';
