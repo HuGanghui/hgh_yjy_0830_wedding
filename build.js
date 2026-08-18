@@ -92,8 +92,8 @@ async function copyMedia(srcPath, id, folder) {
       console.warn(`  ⚠️  [${id}] 图片优化失败，已原样拷贝: ${err.message}`);
     }
   } else {
-    // 视频 / 音频 / SVG 等：原样拷贝（公开目录 photo/music 保留原文件名，secret 随机名防枚举）
-    const filename = folder === 'photo' || folder === 'music'
+    // 视频 / 音频 / LRC / SVG 等：原样拷贝（公开目录 photo/music/lyrics 保留原文件名，secret 随机名防枚举）
+    const filename = folder === 'photo' || folder === 'music' || folder === 'lyrics'
       ? path.basename(srcPath)
       : randomFileName() + ext;
     dest = path.join(outDir, filename);
@@ -125,7 +125,7 @@ async function main() {
   const errors = [];
 
   for (const entry of config.entries) {
-    const { id, to, question, answer, description, photo, music, secret } = entry;
+    const { id, to, question, answer, description, photo, music, lyrics, secret, guestbook } = entry;
 
     // 校验必填字段（to 可选；无收件人条目只需 id/description）
     if (!id || !description) {
@@ -170,6 +170,18 @@ async function main() {
         console.log(`  🎵 [${id}] 背景音乐: ${r.url} (${r.sizeKB} KB)`);
       } catch (err) {
         errors.push(`[${id}] 背景音乐 ${music}: ${err.message}`);
+      }
+    }
+
+    // ── 歌词（LRC，随音乐同步滚动；保留原文件名） ──
+    let lyricsUrl = null;
+    if (lyrics) {
+      try {
+        const r = await copyMedia(lyrics, id, 'lyrics');
+        lyricsUrl = r.url;
+        console.log(`  📜 [${id}] 歌词: ${r.url} (${r.sizeKB} KB)`);
+      } catch (err) {
+        errors.push(`[${id}] 歌词 ${lyrics}: ${err.message}`);
       }
     }
 
@@ -265,6 +277,13 @@ async function main() {
       }
       outEntry = { description, photo: photoUrl, ...(photoW ? { photoW, photoH } : {}), ...(musicUrl ? { music: musicUrl } : {}) };
     }
+
+    // 通用可选项（两个分支共用）：歌词路径 + 该条目关闭留言板（guestbook:false 才写字段，默认开启）
+    outEntry = {
+      ...outEntry,
+      ...(lyricsUrl ? { lyrics: lyricsUrl } : {}),
+      ...(guestbook === false ? { guestbook: false } : {})
+    };
     output[id] = outEntry;
 
     // ── 生成 QR 码 ─────────────────────────────

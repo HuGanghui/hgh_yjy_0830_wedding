@@ -103,6 +103,40 @@
     border: 1px solid var(--border);
   }
 
+  /* ── 歌词：随背景音乐同步滚动 ── */
+  .lyrics-panel {
+    position: relative;
+    margin-bottom: 22px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #faf7f2;
+    /* 上下渐变遮罩，营造「歌词墙」氛围；仅视觉淡出，不影响滚动 */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 10%, #000 90%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 10%, #000 90%, transparent 100%);
+  }
+  .lyrics-scroll {
+    position: relative;
+    max-height: 240px;
+    overflow: hidden;
+    padding: 14px 16px;
+    box-sizing: border-box;
+  }
+  .lyric-line {
+    padding: 5px 0;
+    font-size: 0.92rem;
+    line-height: 1.7;
+    color: var(--text);
+    opacity: 0.4;
+    text-align: center;
+    transition: opacity 0.25s ease, transform 0.25s ease, color 0.25s ease;
+  }
+  .lyric-line.active {
+    opacity: 1;
+    color: var(--accent);
+    font-weight: 700;
+    transform: scale(1.04);
+  }
+
   .question-block {
     text-align: center;
     margin-bottom: 18px;
@@ -490,6 +524,11 @@
     </div>
     <p class="description" id="description"></p>
 
+    <!-- ═══ 歌词：随背景音乐同步滚动（有 lyrics 字段的条目才显示） ═══ -->
+    <div id="lyrics" class="lyrics-panel" style="display:none">
+      <div id="lyrics-scroll" class="lyrics-scroll"></div>
+    </div>
+
     <div class="question-block">
       <div class="icon-wrap">
         <span class="envelope-icon" aria-hidden="true">
@@ -674,6 +713,8 @@
   const $stateErrMsg  = document.getElementById('state-error-msg');
   const $bgAudio      = document.getElementById('bg-music');
   const $musicBtn     = document.getElementById('music-btn');
+  const $lyricsPanel  = document.getElementById('lyrics');
+  const $lyricsScroll = document.getElementById('lyrics-scroll');
   let musicPlaying = false;   // 背景音乐播放状态（true=播放中，音符旋转）
   const $guestbookPublic = document.getElementById('guestbook-public');
   const $gbNamePublic  = document.getElementById('guest-name-public');
@@ -688,6 +729,7 @@
   let gb = { enabled: false };            // guestbook.json 客户端配置
   let currentEntryTo = '';                // 当前条目公开区 To 标签（多收件人并列）
   let currentReplyTo = '';                // 当前解锁收件人（信件回信归属）
+  let entryGbDisabled = false;            // 当前条目是否关闭留言板（config 条目 guestbook:false）
 
   // ── Parse URL param ──────────────────────────
   const params = new URLSearchParams(window.location.search);
@@ -740,10 +782,13 @@
     $public.classList.add('active');
     startPetals();                       // 扫码进页：花瓣全程飘落（婚礼氛围）
     initMusic(entry.music);              // 背景音乐：自动播放，被拦则首次手势启动
+    initLyrics(entry.lyrics);            // 歌词：随背景音乐同步滚动（有 lyrics 字段才有）
     if (isGated) $answer.focus();
 
-    // 留言板：公开祝福对所有条目（含无收件人）都显示；裸地址页 #public 不 active，随父容器隐藏
-    if (gbReady) {
+    // 留言板：公开祝福对所有条目（含无收件人）都显示；config 条目 guestbook:false 时该页关闭；
+    // 裸地址页 #public 不 active，随父容器隐藏
+    entryGbDisabled = entry.guestbook === false;
+    if (gbReady && !entryGbDisabled) {
       currentEntryTo = entry.letters ? entry.letters.map(l => l.to).join(' / ') : '';
       $guestbookPublic.style.display = 'block';
     }
@@ -856,9 +901,9 @@
     renderMedia($secretVideos, payload.videos, true);
     $letter.classList.add('active');
     if ($letter.scrollIntoView) $letter.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    // 留言板：信件视图内的回信块（归属当前收件人）
+    // 留言板：信件视图内的回信块（归属当前收件人；该条目 guestbook:false 时同样关闭）
     currentReplyTo = to || '';
-    if (gbReady) $guestbookReply.style.display = 'block';
+    if (gbReady && !entryGbDisabled) $guestbookReply.style.display = 'block';
   }
 
   // 媒体为 public/ 下的静态文件直链（图片 <img> / 视频 <video>）
@@ -1216,6 +1261,83 @@
     document.addEventListener('pointerdown', start);
     document.addEventListener('click', start);
     document.addEventListener('touchend', start);
+  }
+
+  // ── 歌词：随背景音乐同步滚动 ──
+  // 有 lyrics 字段的条目才有；fetch .lrc → 解析时间戳 → 渲染歌词墙，timeupdate 时高亮当前行
+  // 并滚动居中（seek 后自动对齐）。加载失败静默隐藏，不拦页面（同 guestbook fetch 风格）。
+  function parseLRC(text) {
+    const lines = [];
+    let offsetMs = 0;
+    const offsetM = text.match(/\[offset:([+-]?\d+)\]/i);
+    if (offsetM) offsetMs = parseFloat(offsetM[1]) || 0;
+    for (const raw of text.split(/\r?\n/)) {
+      const stamps = [...raw.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
+      if (!stamps.length) continue;
+      const lyric = raw.replace(/\[[^\]]*\]/g, '').trim();
+      if (!lyric) continue;
+      for (const m of stamps) {
+        const min = +m[1], sec = +m[2], frac = +(m[3] ? m[3].padEnd(3, '0') : 0);
+        lines.push({ t: min * 60 + sec + frac / 1000 - offsetMs / 1000, text: lyric });
+      }
+    }
+    lines.sort((a, b) => a.t - b.t);
+    return lines;
+  }
+
+  let lyricLines = [];            // 解析后的 [{t, text}]，按时间升序
+  let currentLyricIdx = -1;       // 当前高亮行下标
+
+  function renderLyrics(list) {
+    lyricLines = list;
+    $lyricsScroll.textContent = '';
+    for (const line of list) {
+      const div = document.createElement('div');
+      div.className = 'lyric-line';
+      div.textContent = line.text;
+      $lyricsScroll.appendChild(div);
+    }
+    currentLyricIdx = -1;
+  }
+
+  function syncLyric() {
+    if (!lyricLines.length) return;
+    const t = $bgAudio.currentTime || 0;
+    // 二分：最后一个 t <= currentTime 的下标（当前正在唱的行）
+    let lo = 0, hi = lyricLines.length - 1, idx = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (lyricLines[mid].t <= t) { idx = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    if (idx === currentLyricIdx) return;
+    currentLyricIdx = idx;
+    const children = $lyricsScroll.children;
+    for (let i = 0; i < children.length; i++) {
+      children[i].classList.toggle('active', i === idx);
+    }
+    if (idx >= 0) {
+      const el = children[idx];
+      // jsdom 等无布局环境 offsetParent 为 null，跳过滚动不影响高亮断言
+      if (el && el.offsetParent && $lyricsScroll.scrollTo) {
+        const top = el.offsetTop - $lyricsScroll.clientHeight / 2 + el.clientHeight / 2;
+        try { $lyricsScroll.scrollTo({ top, behavior: reduceMotion ? 'auto' : 'smooth' }); }
+        catch (e) { $lyricsScroll.scrollTop = top; }
+      }
+    }
+  }
+
+  function initLyrics(src) {
+    if (!src) return;
+    fetch(src).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(text => {
+        const list = parseLRC(text);
+        if (!list.length) return;                 // 无可同步歌词 → 不显示面板
+        renderLyrics(list);
+        $lyricsPanel.style.display = 'block';
+        syncLyric();                              // 立即对齐当前进度（可能已播放几秒）
+        $bgAudio.addEventListener('timeupdate', syncLyric);
+      })
+      .catch(err => { console.error('Lyrics load failed:', err.name, err.message); });
   }
 
   // ── Bind events ──────────────────────────────

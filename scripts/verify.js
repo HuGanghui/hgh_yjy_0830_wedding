@@ -220,6 +220,11 @@ function createDom(data, entryId, opts = {}) {
         }
         if (u === 'guestbook.json') return { ok: true, status: 200, json: async () => guestbook };
         const p = path.join('public', u);
+        if (u.endsWith('.lrc')) {
+          // 歌词 .lrc：返回文本（磁盘产物优先；测试可注入 opts.lyricsText 样例，与真实产物解耦）
+          const text = fs.existsSync(p) ? fs.readFileSync(p, 'utf-8') : (opts.lyricsText || '');
+          return { ok: true, status: 200, text: async () => text };
+        }
         if (!fs.existsSync(p)) return { ok: false, status: 404, json: async () => ({}) };
         return { ok: true, status: 200, json: async () => data };
       };
@@ -649,6 +654,25 @@ async function checkGuestbookFlow(data, configById) {
   } finally {
     domC.window.close();
   }
+
+  // ── 场景 E：全局留言板启用，但条目 config guestbook:false → 该页公开块仍隐藏 ──
+  const gbDisabledId = Object.keys(data).find(id => data[id] && data[id].guestbook === false);
+  if (!gbDisabledId) { pass('留言板: 无 guestbook:false 条目，跳过 per-entry 关闭校验'); return; }
+  const domE = createDom(data, gbDisabledId, {
+    guestbook: { enabled: true, provider: 'cloudbase', options: { url: 'https://cf.test/guestbook' } }
+  });
+  const winE = domE.window;
+  const docE = winE.document;
+  try {
+    await waitFor(winE, () => docE.getElementById('public').classList.contains('active'));
+    if (docE.getElementById('guestbook-public').style.display === 'none') {
+      pass(`留言板: [${gbDisabledId}] guestbook:false 条目在全局启用时不显示公开块`);
+    } else {
+      fail(`留言板: [${gbDisabledId}] guestbook:false 条目仍显示了公开块`);
+    }
+  } finally {
+    domE.window.close();
+  }
 }
 
 // ── Lightbox 图片放大预览冒烟（浏览器流程的一部分） ────
@@ -901,6 +925,76 @@ async function checkBackgroundMusic(data) {
   }
 }
 
+// ── 歌词：随背景音乐同步滚动（浏览器冒烟） ──
+// 有 lyrics 字段的条目：歌词面板显示、行数与样例 LRC 一致、timeupdate 时对应行高亮（active 类，
+// seek 后自动对齐）；无 lyrics 字段：面板隐藏。样例用注入的 opts.lyricsText，与真实产物解耦。
+async function checkLyrics(data) {
+  const lyricsId = '__lyrics_test__';
+  const musicPath = 'media/__lyrics_test__/music/test.mp3';
+  const SAMPLE = [
+    '[00:00.00] 第一句歌词',
+    '[00:05.00] 第二句歌词',
+    '[00:10.00] 第三句歌词',
+    '[00:15.00] 第四句歌词'
+  ].join('\n');
+  const withLyrics = Object.assign({}, data, {
+    [lyricsId]: {
+      description: '歌词测试条目',
+      music: musicPath,
+      lyrics: 'media/__lyrics_test__/lyrics/test.lrc'
+    }
+  });
+
+  // ── 场景 A：有歌词 → 面板显示、行数正确、timeupdate 高亮对应行 ──
+  const dom = createDom(withLyrics, lyricsId, { lyricsText: SAMPLE });
+  const win = dom.window;
+  const doc = win.document;
+  try {
+    const panel = doc.getElementById('lyrics');
+    if (!await waitFor(win, () => panel.style.display === 'block')) {
+      fail('歌词: 有 lyrics 的条目歌词面板未显示'); return;
+    }
+    pass('歌词: 歌词面板显示');
+
+    const lines = doc.getElementById('lyrics-scroll').children;
+    if (lines.length !== 4) { fail(`歌词: 应渲染 4 行（实际 ${lines.length}）`); return; }
+    pass('歌词: 行数与样例 LRC 一致');
+
+    // 播放到 00:07（第 2 句）→ 派发 timeupdate → 第 2 行高亮、第 1 行取消
+    const $audio = doc.getElementById('bg-music');
+    $audio.currentTime = 7.0;
+    $audio.dispatchEvent(new win.Event('timeupdate'));
+    if (!lines[1].classList.contains('active')) { fail('歌词: 播放到第 2 句时间点，第 2 行应高亮'); return; }
+    if (lines[0].classList.contains('active')) { fail('歌词: 第 1 行不应仍为高亮'); return; }
+    pass('歌词: timeupdate 高亮当前行（seek 后自动对齐）');
+
+    // 跳到最后一句之后 → 最后一行高亮
+    $audio.currentTime = 99.0;
+    $audio.dispatchEvent(new win.Event('timeupdate'));
+    if (!lines[3].classList.contains('active')) { fail('歌词: 播放到结尾，最后一行应高亮'); return; }
+    pass('歌词: 结尾处最后一行高亮');
+  } finally {
+    dom.window.close();
+  }
+
+  // ── 场景 B：无 lyrics → 面板隐藏 ──
+  const plainId = Object.keys(data).find(id => data[id] && !data[id].lyrics);
+  if (!plainId) { pass('歌词: 当前数据所有条目都带 lyrics，跳过隐藏校验'); return; }
+  const domB = createDom(data, plainId);
+  const winB = domB.window;
+  const docB = winB.document;
+  try {
+    await waitFor(winB, () => docB.getElementById('public').classList.contains('active'));
+    if (docB.getElementById('lyrics').style.display === 'none') {
+      pass('歌词: 无 lyrics 条目歌词面板隐藏');
+    } else {
+      fail('歌词: 无 lyrics 条目歌词面板未隐藏');
+    }
+  } finally {
+    domB.window.close();
+  }
+}
+
 // ── 入口 ───────────────────────────────────────────────
 async function main() {
   console.log('🔍 构建产物自检');
@@ -976,6 +1070,16 @@ async function main() {
     }
     // 背景音乐（公开自动播放，保留原文件名）媒体路径
     if (entry.music) checkMediaPath(entry.music, tracked);
+
+    // 歌词（LRC，公开随音乐滚动）媒体路径
+    if (entry.lyrics) checkMediaPath(entry.lyrics, tracked);
+
+    // 该条目关闭留言板（guestbook:false）双向一致性：config 声明 ⇔ data 写入
+    if (cfg.guestbook === false && entry.guestbook !== false) {
+      fail(`[${id}] config 声明 guestbook:false 但 data 未写入该字段（未重新构建？）`);
+    } else if (cfg.guestbook !== false && entry.guestbook === false) {
+      fail(`[${id}] data 有 guestbook:false 但 config 未声明（残留？）`);
+    }
 
     // 无收件人条目：仅公开内容，无解密环节
     const letters = Array.isArray(entry.letters) ? entry.letters : [];
@@ -1061,6 +1165,9 @@ async function main() {
 
   section('背景音乐 · 自动播放/手势兜底');
   await checkBackgroundMusic(data);
+
+  section('歌词 · 随音乐同步滚动');
+  await checkLyrics(data);
 
   section('总结');
   console.log(`共 ${checks} 项检查，失败 ${failures} 项`);
