@@ -135,38 +135,54 @@
     pointer-events: none;
   }
 
-  /* ── 歌词：随背景音乐同步滚动 ── */
+  /* ── 歌词：随背景音乐同步滚动（词页质感，与信纸主题一致） ── */
   .lyrics-panel {
     position: relative;
     margin-bottom: 22px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: #faf7f2;
+    border-radius: 10px;
+    border: 1px solid #ecdfd0;
+    background: radial-gradient(130% 100% at 50% 0%, #fdf9f2 0%, #faf2e3 100%);   /* 暖纸渐变 */
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);                          /* 顶部纸面高光 */
     /* 上下渐变遮罩，营造「歌词墙」氛围；仅视觉淡出，不影响滚动 */
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 10%, #000 90%, transparent 100%);
-    mask-image: linear-gradient(to bottom, transparent 0%, #000 10%, #000 90%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%);
   }
   .lyrics-scroll {
     position: relative;
     max-height: 240px;
     overflow: hidden;
-    padding: 14px 16px;
+    padding: 18px 22px;
     box-sizing: border-box;
   }
   .lyric-line {
-    padding: 5px 0;
-    font-size: 0.92rem;
-    line-height: 1.7;
-    color: var(--text);
+    position: relative;          /* 音符角标的定位基准 */
+    padding: 7px 0;
+    font-family: var(--font-serif);   /* 歌词本就是「词」：衬线更像词页上的字 */
+    font-size: 0.95rem;
+    line-height: 1.8;
+    color: #8a7a63;              /* 未唱到的行：暖纸灰，安静退后 */
     opacity: 0.4;
     text-align: center;
-    transition: opacity 0.25s ease, transform 0.25s ease, color 0.25s ease;
+    letter-spacing: 0.04em;
+    transition: opacity 0.3s ease, transform 0.3s ease, color 0.3s ease, text-shadow 0.3s ease;
   }
   .lyric-line.active {
     opacity: 1;
-    color: var(--accent);
+    color: var(--wax);           /* 正在唱到的行：蜡封红点亮，如唇边滚过的字 */
     font-weight: 700;
-    transform: scale(1.04);
+    transform: scale(1.05);
+    text-shadow: 0 1px 16px rgba(161, 56, 74, 0.28);   /* 柔和光晕 */
+  }
+  .lyric-line.active::before {   /* 行首小音符：标记当前唱到的位置 */
+    content: "♪";
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 0.8rem;
+    color: var(--wax);
+    opacity: 0.85;
   }
 
   .question-block {
