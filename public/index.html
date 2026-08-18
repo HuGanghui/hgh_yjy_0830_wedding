@@ -108,6 +108,33 @@
     border: 1px solid var(--border);
   }
 
+  /* ── 描述落点突出块：信末单独写给读者的话（emphasis，config 字段驱动） ── */
+  .emphasis {
+    position: relative;
+    font-family: var(--font-serif);   /* 与描述同衬线，但蜡封色 + 底纹把它从正文里托起来 */
+    font-size: 1.08rem;
+    line-height: 1.9;
+    color: var(--wax);
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-bottom: 22px;
+    padding: 16px 18px 16px 44px;
+    background: linear-gradient(180deg, #fdf7f3, #fbeae4);
+    border-radius: 4px 10px 10px 4px;
+    border-left: 3px solid var(--wax);   /* 左侧蜡封色竖条：一句话被轻轻拾起 */
+  }
+  .emphasis::before {   /* 装饰性引号 */
+    content: "\201C";
+    position: absolute;
+    top: 4px;
+    left: 12px;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 2.4rem;
+    line-height: 1;
+    color: rgba(161, 56, 74, 0.3);
+    pointer-events: none;
+  }
+
   /* ── 歌词：随背景音乐同步滚动 ── */
   .lyrics-panel {
     position: relative;
@@ -554,6 +581,9 @@
     </div>
     <p class="description" id="description"></p>
 
+    <!-- ═══ 描述落点突出块：信末单独写给读者的那句话（有 emphasis 字段的条目才显示） ═══ -->
+    <div id="emphasis" class="emphasis" style="display:none"></div>
+
     <!-- ═══ 歌词：随背景音乐同步滚动（有 lyrics 字段的条目才显示） ═══ -->
     <div id="lyrics" class="lyrics-panel" style="display:none">
       <div id="lyrics-scroll" class="lyrics-scroll"></div>
@@ -731,6 +761,7 @@
   const $photoWrap    = document.getElementById('photo-wrap');
   const $photo        = document.getElementById('public-photo');
   const $description  = document.getElementById('description');
+  const $emphasis     = document.getElementById('emphasis');
   const $toLabel      = document.getElementById('to-label');
   const $answer       = document.getElementById('answer-input');
   const $unlockBtn    = document.getElementById('unlock-btn');
@@ -795,6 +826,11 @@
       $photoWrap.style.display = 'block';
     }
     $description.textContent = entry.description || '';
+    // 描述落点突出块（emphasis）：有该字段的条目才显示，纯文本（textContent 防注入）
+    if (entry.emphasis) {
+      $emphasis.textContent = entry.emphasis;
+      $emphasis.style.display = 'block';
+    }
 
     // 有 letters 字段的条目才有解锁环节；无收件人的条目仅展示照片+描述
     const isGated = Array.isArray(entry.letters) && entry.letters.length > 0;

@@ -995,6 +995,74 @@ async function checkLyrics(data) {
   }
 }
 
+// ── 描述落点突出块（emphasis，浏览器冒烟） ─────────────
+// 有 emphasis 字段的条目：突出块显示、textContent 与字段一致；无 emphasis 条目：块隐藏。
+// 场景 A/B 用合成条目测显示逻辑（与真实产物解耦）；再用真实 walking-fish 数据做端到端断言
+// （婚礼独白应从描述正文拆出、只出现在突出块里）。
+async function checkEmphasis(data) {
+  const emphId = '__emphasis_test__';
+  const TEXT = '这也是想对彼此说的话：往后余生，我们互为陆地，随时可以哭泣。\n\n愿你也能遇见这样的人。';
+  const withEmph = Object.assign({}, data, {
+    [emphId]: { description: '测试条目', emphasis: TEXT }
+  });
+
+  // ── 场景 A：有 emphasis → 块显示、文本一致 ──
+  const dom = createDom(withEmph, emphId);
+  const win = dom.window;
+  const doc = win.document;
+  try {
+    if (!await waitFor(win, () => doc.getElementById('public').classList.contains('active'))) {
+      fail('emphasis: 公开区未渲染'); return;
+    }
+    const $el = doc.getElementById('emphasis');
+    if ($el.style.display === 'none') { fail('emphasis: 有 emphasis 的条目突出块未显示'); return; }
+    pass('emphasis: 有 emphasis 的条目突出块显示');
+    if ($el.textContent !== TEXT) { fail('emphasis: 突出块文本与 config 字段不一致'); return; }
+    pass('emphasis: 突出块文本与 emphasis 字段一致');
+  } finally {
+    dom.window.close();
+  }
+
+  // ── 场景 B：真实 walking-fish 端到端（独白应从描述正文拆出，只出现在突出块） ──
+  const fish = data['walking-fish'];
+  if (fish && fish.emphasis) {
+    const domB = createDom(data, 'walking-fish');
+    const winB = domB.window;
+    const docB = winB.document;
+    try {
+      await waitFor(winB, () => docB.getElementById('public').classList.contains('active'));
+      const $elB = docB.getElementById('emphasis');
+      if ($elB.style.display === 'none') { fail('emphasis: walking-fish 突出块未显示'); return; }
+      pass('emphasis: walking-fish 突出块显示');
+      if (docB.getElementById('description').textContent.indexOf('这也是我们想对彼此说的话') !== -1) {
+        fail('emphasis: 婚礼独白不应残留在描述正文中'); return;
+      }
+      pass('emphasis: 婚礼独白已从描述正文拆出，只出现在突出块');
+    } finally {
+      domB.window.close();
+    }
+  } else {
+    pass('emphasis: walking-fish 暂无 emphasis，跳过端到端断言');
+  }
+
+  // ── 场景 C：无 emphasis 条目 → 块隐藏 ──
+  const plainId = Object.keys(data).find(id => data[id] && !data[id].emphasis);
+  if (!plainId) { pass('emphasis: 当前数据所有条目都带 emphasis，跳过隐藏校验'); return; }
+  const domC = createDom(data, plainId);
+  const winC = domC.window;
+  const docC = winC.document;
+  try {
+    await waitFor(winC, () => docC.getElementById('public').classList.contains('active'));
+    if (docC.getElementById('emphasis').style.display === 'none') {
+      pass('emphasis: 无 emphasis 条目突出块隐藏');
+    } else {
+      fail('emphasis: 无 emphasis 条目突出块未隐藏');
+    }
+  } finally {
+    domC.window.close();
+  }
+}
+
 // ── 入口 ───────────────────────────────────────────────
 async function main() {
   console.log('🔍 构建产物自检');
@@ -1079,6 +1147,13 @@ async function main() {
       fail(`[${id}] config 声明 guestbook:false 但 data 未写入该字段（未重新构建？）`);
     } else if (cfg.guestbook !== false && entry.guestbook === false) {
       fail(`[${id}] data 有 guestbook:false 但 config 未声明（残留？）`);
+    }
+
+    // 描述落点突出块（emphasis）双向一致性：config 声明 ⇔ data 写入（纯文本透传，应完全一致）
+    if (cfg.emphasis && entry.emphasis !== cfg.emphasis) {
+      fail(`[${id}] config 有 emphasis 但 data 未写入对应内容（未重新构建？）`);
+    } else if (!cfg.emphasis && entry.emphasis) {
+      fail(`[${id}] data 有 emphasis 但 config 未声明（残留？）`);
     }
 
     // 无收件人条目：仅公开内容，无解密环节
@@ -1168,6 +1243,9 @@ async function main() {
 
   section('歌词 · 随音乐同步滚动');
   await checkLyrics(data);
+
+  section('描述落点突出块');
+  await checkEmphasis(data);
 
   section('总结');
   console.log(`共 ${checks} 项检查，失败 ${failures} 项`);
