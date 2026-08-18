@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="robots" content="noindex, nofollow">
-<title></title>
+<title>扫码收信 · 我们的婚礼</title>
 <link rel="preload" as="fetch" href="data.json" crossorigin>
 <style>
   /* ── Reset & Base ──────────────────────────── */
@@ -23,6 +23,9 @@
     --success: #3a7d44;
     --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
     --radius: 12px;
+    --wax: #a1384a;   /* 蜡封红：破蜡开信的时刻（解锁按钮 / 信件抬头），区别于通用的暖棕 accent */
+    --wax-hover: #83313f;
+    --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
   }
 
   html { font-size: 16px; }
@@ -83,6 +86,7 @@
     max-height: 420px;
     object-fit: cover;
     border-radius: var(--radius);
+    border: 1px solid #ece3d2;    /* 细暖框：照片如裱装后静置于卡片 */
     box-shadow: var(--shadow);
     display: block;
     /* 加载占位：aspect-ratio 由 JS 按照片实际比例设置，避免图片到达时布局跳动 */
@@ -91,7 +95,8 @@
   }
 
   .description {
-    font-size: 0.95rem;
+    font-family: var(--font-serif);   /* 叙事性文字用宋体衬线，读起来像一封信 */
+    font-size: 1rem;
     line-height: 1.8;
     color: var(--text);
     white-space: pre-wrap;
@@ -143,7 +148,8 @@
   }
   .to-label {
     display: inline-block;
-    font-size: 0.8rem;
+    font-family: var(--font-serif);   /* 「To 收件人」如信封上手写的题名 */
+    font-size: 0.85rem;
     font-weight: 600;
     color: var(--accent);
     background: #f5ede0;
@@ -176,6 +182,15 @@
     border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(139,111,78,0.1);
   }
+  /* 键盘可访问性：仅键盘 Tab 聚焦时显示清晰焦点环（鼠标点击不干扰） */
+  .btn:focus-visible,
+  .input-group input:focus-visible,
+  .guestbook-form input:focus-visible,
+  .guestbook-form textarea:focus-visible,
+  .music-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
   .input-group input::placeholder {
     color: #c4b9a6;
   }
@@ -202,6 +217,10 @@
   .btn:active { transform: scale(0.98); }
   .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
+  /* 解锁按钮 = 拆信封的「破蜡」动作，用蜡封红区别于通用按钮 */
+  #unlock-btn { background: var(--wax); }
+  #unlock-btn:hover { background: var(--wax-hover); }
+
   .error-msg {
     text-align: center;
     font-size: 0.9rem;
@@ -221,6 +240,12 @@
   /* ── 专属信件视图（答对后展示） ── */
   .letter { display: none; }
   .letter.active { display: block; }
+  /* 信件揭晓：答对后如同拆开信封，信件温柔浮现（prefers-reduced-motion 时关闭，见文末） */
+  .letter.active .letter-card { animation: letter-in 0.5s ease both; }
+  @keyframes letter-in {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
   .letter-card {
     position: relative;
     background: linear-gradient(180deg, #fffdf8 0%, #fbf3e4 100%);
@@ -239,14 +264,16 @@
     opacity: 0.7;
   }
   .letter-head {
-    font-size: 1.2rem;
+    font-family: var(--font-serif);   /* 信件抬头：衬线 + 蜡封红 */
+    font-size: 1.25rem;
     font-weight: 700;
-    color: var(--accent);
+    color: var(--wax);
     letter-spacing: 0.05em;
     margin-bottom: 16px;
   }
   .letter-body {
-    font-size: 1rem;
+    font-family: var(--font-serif);   /* 正文如信纸上的字 */
+    font-size: 1.05rem;
     line-height: 2;
     color: var(--text);
     white-space: pre-wrap;
@@ -254,8 +281,9 @@
     margin-bottom: 18px;
   }
   .letter-sign {
+    font-family: var(--font-serif);   /* 落款如亲笔签名 */
     text-align: right;
-    font-size: 0.92rem;
+    font-size: 0.95rem;
     color: var(--text-secondary);
     margin-top: 6px;
   }
@@ -393,6 +421,7 @@
     border-top: 1px dashed var(--border);
   }
   .guestbook-title {
+    font-family: var(--font-serif);
     font-size: 1rem;
     font-weight: 700;
     color: var(--accent);
@@ -503,6 +532,7 @@
   @media (prefers-reduced-motion: reduce) {
     #petals { display: none; }   /* 尊重「减弱动态效果」系统设置 */
     .music-btn.playing { animation: none; }   /* 音符不再旋转，但播放功能保留 */
+    .letter.active .letter-card { animation: none; }   /* 信件揭晓不再上浮 */
   }
 </style>
 </head>
