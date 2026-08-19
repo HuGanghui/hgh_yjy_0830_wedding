@@ -1,5 +1,6 @@
 node_modules/
 qrcodes/
+qrcodes*.zip
 config.json
 
 # 大的源媒体（不提交，构建时引用）

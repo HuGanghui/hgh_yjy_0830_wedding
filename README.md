@@ -12,8 +12,8 @@
 
 ```
 config.json          build.js              public/
-(你编辑)      →      (本地运行：      →      (部署到 GitHub Pages)
-                      加密+拷贝媒体)
+(你编辑)      →      (本地运行：      →      (部署到 CloudBase 主托管
+                      加密+拷贝媒体)           + GitHub Pages 镜像)
                          │
                          └──→ qrcodes/*.png  (QR 码，分发给对应的人)
 ```
@@ -22,7 +22,7 @@ config.json          build.js              public/
 
 ```
 ┌──────────────┐     扫一扫       ┌──────────────────────────────┐
-│   QR 码      │  ───────────→   │  解锁页面 (GitHub Pages)       │
+│   QR 码      │  ───────────→   │  解锁页面 (CloudBase)          │
 │ ?id=alice    │                 │                              │
 └──────────────┘                 │  🖼 照片 + 描述文字             │
                                  │  ❓ To 阿杰：我们第一次见面…？  │
@@ -35,7 +35,7 @@ config.json          build.js              public/
 
 1. 你在本地编辑 `config.json`，填入收件人、问题、答案、公开照片与描述、额外内容（文字/图片/视频）
 2. 运行 `node build.js`：拷贝媒体到 `public/media/`，用答案作为密钥 AES-256-GCM 加密额外内容，生成 `public/data.json` 和 QR 码 PNG
-3. 将 `public/` 目录部署到 GitHub Pages
+3. 将 `public/` 目录部署到 CloudBase（静态托管）；GitHub Pages 作镜像
 4. 将 QR 码图片分发给对应的人
 5. 对方扫描 QR 码 → **直接看到**照片 + 描述 + 问题 → 输入答案 → 浏览器本地解密 → 看到额外内容
 
@@ -89,7 +89,7 @@ qr-unlock/
 ├── assets/                # 源媒体文件（照片/图片/视频，config 引用；已 gitignore、仅本地，务必自行备份原图）
 ├── .gitignore
 ├── qrcodes/               # 生成的 QR 码 PNG（已 gitignore）
-└── public/                # 部署到 GitHub Pages
+└── public/                # 部署到 CloudBase（主）+ GitHub Pages（镜像）
     ├── index.html          # 解锁页面（单文件，零依赖）
     ├── data.json           # 数据（公开字段明文 + 额外内容加密）
     ├── guestbook.json      # 留言板客户端配置（enabled/provider/options；未启用时 {"enabled":false}）
@@ -114,7 +114,7 @@ cp config.example.json config.json
 
 ```json
 {
-  "baseUrl": "https://你的用户名.github.io/仓库名",
+  "baseUrl": "https://<环境ID>.tcloudbaseapp.com",   // 站点访问地址，末尾不加 /；二维码 URL 与此绑定
   "entries": [
     {
       "id": "alice-2024",
@@ -137,7 +137,7 @@ cp config.example.json config.json
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `baseUrl` | 是 | GitHub Pages 的访问地址，末尾不加 `/` |
+| `baseUrl` | 是 | 站点访问地址（现为 CloudBase 默认域名 `*.tcloudbaseapp.com`），末尾不加 `/`；二维码 URL 与此绑定，改了要重新构建 QR 码 |
 | `entries[].id` | 是 | 唯一标识，英文/数字/短横线，会成为 URL 的 `?id=` 参数 |
 | `entries[].to` | 否 | 收件人称呼，页面显示为「To 阿杰」。**无特定收件人的照片省略此字段**：该条目只展示公开照片+描述，不显示问题与解锁环节（见下方「无收件人条目」） |
 | `entries[].question` | 否\* | 扫码后显示的问题。**\*仅当有 `to` 收件人时必填**——有收件人才有解锁环节 |
@@ -190,31 +190,36 @@ npm run build
 - `public/data.json` 写入数据（公开字段明文 + 额外内容加密）
 - `public/media/<id>/` 拷贝媒体：公开照片保留原文件名（自动生成 480/960/1600 三档 × AVIF/WebP/JPEG，页面按屏幕选档，扩展名统一为 `.jpg` 回退，带透明通道的压平到白底），公开背景音乐保留原文件名（`music/`），secret 图片/视频使用随机文件名
 
-### 4. 部署到 GitHub Pages
+### 4. 部署（主托管 CloudBase，GitHub Pages 作镜像）
 
-整个项目用一个 git 仓库（外层），GitHub Actions 自动把 `public/` 部署上线。**无需在 `public/` 内再建 git。**
+`public/` 是纯静态目录。**主托管是腾讯云 CloudBase 静态网站托管**（国内 200+ CDN 节点，扫码打开 / 图片 / 音频加载都快）；**GitHub Pages 保留作镜像**（push 后 CI 自动跟随，旧二维码不再指向它）。
 
-**一次性设置：**
+**部署到 CloudBase（主）：**
 
-1. 在 GitHub 新建仓库，把整个项目推上去（`config.json` / `qrcodes/` / `media-source/` / `assets/` 已被 `.gitignore` 排除，不会上传；答案即密钥始终不入库，源媒体原图只在本地）：
-   > ⚠️ `assets/` 不进仓库后，原图仅存于你的本地，**请务必把 `assets/` 备份到 U 盘 / 网盘等**，以防误删或换机丢失。
-   ```bash
-   git remote add origin https://github.com/你的用户名/仓库名.git
-   git push -u origin main
-   ```
-2. 仓库 Settings → Pages → Source 选择 **GitHub Actions**。
+```bash
+tcb login                # 首次：登录腾讯云（浏览器授权）
+tcb env use <envId>      # 选用环境（如 guestbook-d2gg4yl5q45f02e97；envId 不带 appId 后缀）
+tcb hosting deploy ./public --env-id <envId> --yes   # 把 public/ 部署到静态托管（文件部署）
+```
 
-仓库里已包含 `.github/workflows/deploy.yml`：每次 push 到 `main` 就自动把**已提交的 `public/`** 部署到 Pages（不执行 `npm run build`——config.json 含答案不入库，CI 里没有它无法重建，所以约定「本地构建 → 提交产物 → push → 自动上线」）。
+上线地址即 config 的 `baseUrl`（默认域名 `https://<环境ID>.tcloudbaseapp.com`）。
+
+**镜像到 GitHub Pages（可选但建议保留）：**
+
+整个项目用一个 git 仓库（外层），`config.json` / `qrcodes/` / `assets/` 已被 `.gitignore` 排除、不会上传（答案即密钥始终不入库；**源媒体原图请务必自行备份到 U 盘 / 网盘**）。仓库里已包含 `.github/workflows/deploy.yml`：每次 push 到 `main` 自动把**已提交的 `public/`** 部署到 Pages。CI **不执行** `npm run build`（config.json 不入库，CI 无法重建），所以「本地构建 → 提交产物 → push」这条链不变。
 
 **日常更新流程：**
 
 ```bash
 # 改内容：编辑 config.json（或新增 assets/ 源文件）
-npm run build          # 重新生成 public/data.json + public/media/ + qrcodes/
-git add .              # config.json/qrcodes/ 自动被忽略，只会上传安全内容
-git commit -m "更新内容"
-git push               # push 后 Actions 自动部署，几分钟后线上更新
+npm run build                                     # 重新生成 public/data.json + public/media/ + qrcodes/
+git add . && git commit -m "更新内容"               # config.json/qrcodes/ 自动被忽略
+git push                                          # ① GH Pages 镜像自动更新
+tcb hosting deploy ./public --env-id <envId> --yes # ② 推 CloudBase 主托管
 ```
+
+> ⚠️ **环境到期提醒**：当前 CloudBase 环境为个人版，**2026-09-17 到期**，到期前需在控制台续费/升级，否则静态托管与云函数下线、扫码直接挂。
+> ⚠️ **视频进度条限制**：CloudBase 默认域名不支持 HTTP Range（见「本地验证」），线上视频拉不动进度条；GitHub Pages 镜像支持 Range、可正常看视频。要修需绑自定义 CDN 域名（需备案）。
 
 ### 5. 分发 QR 码
 
@@ -233,7 +238,7 @@ git push               # push 后 Actions 自动部署，几分钟后线上更�
 | 前端页面 | 原生 HTML/CSS/JS | 单文件约 250 行，移动端优先 |
 | 留言板存储 | 腾讯云 CloudBase（云函数 HTTP 访问服务 + 云数据库，原生 fetch） | 客户端只 POST 不 GET，云函数是唯一写入口，provider 抽象便于换 Supabase 等 |
 | 测试（dev） | `jsdom` + `jsqr` (npm) | pre-commit 自检：jsdom 跑真实 index.html 解锁流程，jsqr 解码 QR 内容 |
-| 托管 | GitHub Pages | 免费，全球 CDN |
+| 托管 | 腾讯云 CloudBase（主）+ GitHub Pages（镜像） | 主托管国内 200+ CDN 节点，扫码/加载快；GH Pages 免费镜像，CI 自动跟随 |
 
 ### 数据格式
 
@@ -381,7 +386,8 @@ node server.js
 # 默认端口 8888，服务 public/ 目录
 ```
 
-> ⚠️ **不要用 `python3 -m http.server` 预览视频**：它不支持 HTTP Range 请求，视频会「只有声音、画面不动、拉不动进度条」。`server.js` 已实现 Range/206，`node server.js` 直接可用；部署到 GitHub Pages 无此问题（GitHub 支持 Range）。
+> ⚠️ **不要用 `python3 -m http.server` 预览视频**：它不支持 HTTP Range 请求，视频会「只有声音、画面不动、拉不动进度条」。`server.js` 已实现 Range/206，`node server.js` 直接可用。
+> ⚠️ **CloudBase 默认域名（`*.tcloudbaseapp.com`）同样不支持 Range**（网关对 Range 返回 200 全量，上游 COS 本身支持）——线上视频会「只有声音、拉不动进度条」；GitHub Pages 镜像支持 Range，可正常看视频。要修只能绑自定义 CDN 域名（需备案）。
 
 然后浏览器访问：
 
@@ -423,7 +429,7 @@ file qrcodes/*.png
 
 ### QR 码扫不出来怎么办？
 
-QR 码的 URL 非常短（例如 `https://xxx.github.io/repo?id=alice-2024`），密度很低，几乎所有手机都能轻松扫描。如果扫不出，尝试在光线充足的环境下，或使用系统相机直接扫码。
+QR 码的 URL 非常短（例如 `https://<环境ID>.tcloudbaseapp.com?id=alice-2024`），密度很低，几乎所有手机都能轻松扫描。如果扫不出，尝试在光线充足的环境下，或使用系统相机直接扫码。
 
 ### 可以修改已经发出的内容吗？
 
@@ -439,7 +445,7 @@ QR 码的 URL 非常短（例如 `https://xxx.github.io/repo?id=alice-2024`）�
 
 ### 可以不用 GitHub Pages 吗？
 
-`public/` 目录的内容是纯静态文件，可以部署到任何静态托管服务：Vercel、Netlify、Cloudflare Pages、腾讯云 COS、阿里云 OSS 等。
+可以。当前**主托管已是腾讯云 CloudBase**（`tcb hosting deploy ./public` 一键部署），GitHub Pages 只是镜像。`public/` 目录的内容是纯静态文件，也可部署到任何静态托管服务：Vercel、Netlify、Cloudflare Pages、腾讯云 COS、阿里云 OSS 等。
 
 ### 可以支持更多格式的内容吗？
 

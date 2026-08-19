@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 QR 码加密解锁系统，**一种入口（二维码直达）**：
 - **二维码直达（直开）**：每个条目生成一个 QR 码，指向 `public/index.html?id=<id>`——**URL 只与 baseUrl 和 id 相关，永不变**。扫码后直接看到公开内容——照片 + 描述文字（无加密环节）；输入收信码答对后，浏览器本地解密并**跳转到专属信件视图**（「致 [to] + 正文 + 图片/视频 + 落款」的信件卡片）。
 - **一码多信**：一个条目可携带多封信（config 用 `letters: [{to, answer, secret}, ...]`，如 A-05：同一张照片，花花/梁雪/小童扫**同一个二维码** → 各自输入自己的收信码 → 各自的专属信件）。内容/收信人增删都**无需更换二维码**。
-- 零服务器，纯静态，部署到 GitHub Pages。
+- 零服务器，纯静态。**主托管：腾讯云 CloudBase 静态网站托管**（国内 200+ CDN 节点，扫码打开/图片/音频加载快）；**GitHub Pages 保留作镜像**（push 后 CI 自动跟随，旧二维码不再指向它）。
 
 **答案本身就是解密密钥**——`config.json` 中的 `answer` 字段从不存储在任何输出里。只有**额外内容（secret）**经 PBKDF2 派生密钥 + AES-GCM 加密：正确答案认证通过才解密成功，错误答案被拒绝，因此没有「正确答案库」可被窃取。公开内容（照片 / 描述 / 问题）为明文。
 
@@ -29,15 +29,23 @@ cp config.example.json config.json   # 首次创建配置
 npm run build            # 构建：读取 config.json → 生成 public/data.json + qrcodes/*.png
 npm run verify           # 提交前自检（pre-commit 自动跑）：条目一致性 + 解密链路 + 媒体路径 + QR 内容 + 浏览器流程（含图片放大预览/下载/一码多信/花瓣动效/留言板）
 git config core.hooksPath .githooks  # 一次性设置：启用 pre-commit 钩子（新环境必跑）
+
+# 部署（主托管 CloudBase，镜像 GitHub Pages，见「部署」）
+tcb login                # 首次：登录腾讯云（浏览器授权）
+tcb env use guestbook-d2gg4yl5q45f02e97   # 选用环境（envId 不带 appId 后缀）
+tcb hosting deploy ./public --env-id guestbook-d2gg4yl5q45f02e97 --yes   # 推 CloudBase 静态托管
+git push origin main     # 提交产物后 push → GH Pages 镜像自动更新
 ```
 
 本地验证：
 ```bash
-# 浏览器端验证（模拟 GitHub Pages）——务必用支持 Range 的服务器，否则视频无法拖动进度条
+# 浏览器端验证（模拟托管环境）——务必用支持 Range 的服务器，否则视频无法拖动进度条
 node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8888，目录 public
 # 访问 http://localhost:8888/?id=<entryId>
 # ⚠️ Python 的 http.server 不支持 Range，视频会「只有声音、画面不动、拉不动进度条」。
-#    部署到 GitHub Pages 无此问题（GitHub 支持 Range）。
+# ⚠️ CloudBase 默认域名（*.tcloudbaseapp.com）同样不支持 Range（tcbgw 网关对 Range 返回 200 全量，
+#    上游 COS 本身支持）→ 线上视频拉不动进度条；GitHub Pages 镜像支持 Range、可正常看视频。
+#    要修只能绑自定义 CDN 域名（需备案）。
 
 # Node 端到端加解密验证（一行的 node -e，见 README「测试一」）
 # 用 config.json 中的真实 answer 验证解密成功、错误答案被拒绝
@@ -137,4 +145,15 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 
 ## 部署
 
-`public/` 是纯静态目录，整个项目用一个 git 仓库（外层），由 `.github/workflows/deploy.yml` 在 push 到 main 时自动把**已提交的 public/** 部署到 GitHub Pages（Settings → Pages → Source: GitHub Actions）。CI **不执行** `npm run build`（config.json 含答案、不入库，CI 无法重建）——约定「本地 `npm run build` → 提交产物 → push → 自动上线」。也可换任何静态托管（Vercel/Netlify/COS 等）。
+**主托管：腾讯云 CloudBase 静态网站托管**（`tcb hosting deploy`，即控制台「文件部署」，默认域名 `*.tcloudbaseapp.com`，国内 200+ CDN 节点）；**镜像：GitHub Pages**（`.github/workflows/deploy.yml` 在 push 到 main 时自动把**已提交的 public/** 部署上去）。
+
+**部署流程（约定「本地构建 → 提交产物 → 双端上线」）：**
+```bash
+npm run build                    # 本地构建（config.json 含答案、不入库，CI 无法重建，必须在本地）
+tcb hosting deploy ./public --env-id guestbook-d2gg4yl5q45f02e97 --yes   # ① 推 CloudBase 主托管
+git add . && git commit -m "..." && git push origin main                # ② 提交并 push → GH Pages 镜像自动更新
+```
+- 首次需 `tcb login` + `tcb env use guestbook-d2gg4yl5q45f02e97`。envId 不带 appId 后缀（`tcb hosting detail` 报 "not exist" 时先 `tcb env list` 确认真实 envId）。
+- 每次构建会清空 `public/media/` 与 `qrcodes/`，产物与 config 严格一致；改内容后重新 build + 部署即可，无需改 QR 码（URL 不变）。
+- ⚠️ **环境到期**：当前为个人版，**2026-09-17 到期**，到期前须在 CloudBase 控制台续费/升级，否则静态托管与云函数下线、扫码直接挂。
+- ⚠️ **Range 限制**：CloudBase 默认域名不支持 HTTP Range（见「本地验证」），线上视频进度条受限；GitHub Pages 镜像可看视频。要修需绑自定义 CDN 域名（备案）。
