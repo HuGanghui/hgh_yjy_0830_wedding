@@ -616,7 +616,7 @@ async function checkGuestbookFlow(data, configById) {
           const replyShown = docB.getElementById('guestbook-reply').style.display === 'block';
           if (!replyShown) { fail('留言板: 解锁后信末留言块未显示'); }
           else pass('留言板: 解锁后信末留言块显示');
-          // 匿名留言框：无标题/无提示/无名字输入框，占位「给新人留言」、按钮「送出留言」
+          // 匿名留言框：无标题/无提示/无名字输入框，占位「给新人留言」、按钮「💌提交」
           if (docB.getElementById('guest-name-reply') !== null) {
             fail('留言板: 信末留言框仍保留了名字输入框');
           } else pass('留言板: 信末留言框无名字输入框（匿名）');
@@ -625,9 +625,9 @@ async function checkGuestbookFlow(data, configById) {
             fail(`留言板: 信末留言框占位应为「给新人留言」→ 实际「${replyTextEl && replyTextEl.placeholder}」`);
           } else pass('留言板: 信末留言框占位为「给新人留言」');
           const replyBtn = docB.getElementById('guest-submit-reply');
-          if (!replyBtn || replyBtn.textContent !== '送出留言') {
-            fail(`留言板: 信末留言框按钮应为「送出留言」→ 实际「${replyBtn && replyBtn.textContent}」`);
-          } else pass('留言板: 信末留言框按钮为「送出留言」');
+          if (!replyBtn || replyBtn.textContent !== '💌提交') {
+            fail(`留言板: 信末留言框按钮应为「💌提交」→ 实际「${replyBtn && replyBtn.textContent}」`);
+          } else pass('留言板: 信末留言框按钮为「💌提交」');
           const expectedTo = (data[gatedId].letters[0] && data[gatedId].letters[0].to) || '';
           docB.getElementById('guest-text-reply').value = '祝你幸福！';
           docB.getElementById('guest-submit-reply').click();

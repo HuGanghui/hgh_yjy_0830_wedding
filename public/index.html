@@ -699,7 +699,7 @@
       <div id="guestbook-reply" class="guestbook" style="display:none">
         <div class="guestbook-form">
           <textarea id="guest-text-reply" rows="3" maxlength="500" placeholder="给新人留言"></textarea>
-          <button class="btn" id="guest-submit-reply">送出留言</button>
+          <button class="btn" id="guest-submit-reply">💌提交</button>
         </div>
         <p class="guestbook-msg" id="guest-msg-reply"></p>
       </div>
@@ -1050,7 +1050,7 @@
       $msg.textContent = '提交失败，请稍后重试';   // 保留输入，可重试
     } finally {
       $btn.disabled = false;
-      $btn.textContent = isPublic ? '送出祝福' : '送出留言';
+      $btn.textContent = isPublic ? '送出祝福' : '💌提交';
     }
   }
 
