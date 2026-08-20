@@ -867,11 +867,14 @@
     initLyrics(entry.lyrics);            // 歌词：随背景音乐同步滚动（有 lyrics 字段才有）
     if (isGated) $answer.focus();
 
-    // 留言板：公开祝福对所有条目（含无收件人）都显示；config 条目 guestbook:false 时该页关闭；
+    // 留言板：公开「给新人的祝福」框仅无收件人条目显示——这类条目没有解锁后回信，
+    // 扫码留言就是唯一互动；有收件人（letters）的条目扫码后不显示祝福框，
+    // 解锁后用信件视图里的「给收件人的回信」即可。config 条目 guestbook:false 时该页关闭；
     // 裸地址页 #public 不 active，随父容器隐藏
     entryGbDisabled = entry.guestbook === false;
-    if (gbReady && !entryGbDisabled) {
-      currentEntryTo = entry.letters ? entry.letters.map(l => l.to).join(' / ') : '';
+    const hasLetters = Array.isArray(entry.letters) && entry.letters.length > 0;
+    if (gbReady && !entryGbDisabled && !hasLetters) {
+      currentEntryTo = '';
       $guestbookPublic.style.display = 'block';
     }
   }

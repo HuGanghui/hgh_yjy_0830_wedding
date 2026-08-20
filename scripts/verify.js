@@ -674,6 +674,27 @@ async function checkGuestbookFlow(data, configById) {
   } finally {
     domE.window.close();
   }
+
+  // ── 场景 F：门禁条目（有解锁后回信）→ 扫码后公开祝福块隐藏，解锁后用回信块 ──
+  if (gatedId) {
+    const domF = createDom(data, gatedId, {
+      guestbook: { enabled: true, provider: 'cloudbase', options: { url: 'https://cf.test/guestbook' } }
+    });
+    const winF = domF.window;
+    const docF = winF.document;
+    try {
+      await waitFor(winF, () => docF.getElementById('public').classList.contains('active'));
+      if (docF.getElementById('guestbook-public').style.display === 'none') {
+        pass(`留言板: [${gatedId}] 门禁条目扫码后不显示公开祝福块（解锁后用回信块）`);
+      } else {
+        fail(`留言板: [${gatedId}] 门禁条目扫码后仍显示了公开祝福块`);
+      }
+    } finally {
+      domF.window.close();
+    }
+  } else {
+    pass('留言板: 无门禁条目，跳过「门禁条目隐藏公开祝福块」校验');
+  }
 }
 
 // ── Lightbox 图片放大预览冒烟（浏览器流程的一部分） ────
