@@ -51,7 +51,7 @@ exports.main = async (event) => {
 
   try {
     const res = await db.collection('guestbook').add({
-      type: String(payload.type || 'blessing'),        // 'blessing' 公开祝福 | 'letter' 信件回信
+      type: String(payload.type || 'blessing'),        // 'blessing' 公开祝福 | 'letter' 解锁后留言（匿名，name 可为空）
       entryId: String(payload.entryId || '').slice(0, 64),
       to: String(payload.to || '').slice(0, MAX_TO),
       name: String(payload.name || '').slice(0, MAX_NAME),

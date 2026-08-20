@@ -595,7 +595,7 @@ async function checkGuestbookFlow(data, configById) {
     dom2.window.close();
   }
 
-  // ── 场景 C：门禁条目解锁 → 信件回信块 → type=letter、to 归属收件人 ──
+  // ── 场景 C：门禁条目解锁 → 信末匿名「给新人留言」框 → type=letter、to 归属收件人、name 为空 ──
   if (gatedId) {
     const answer = configById[gatedId] ? configLetterAnswers(configById[gatedId])[0] : null;
     if (answer) {
@@ -611,23 +611,35 @@ async function checkGuestbookFlow(data, configById) {
         docB.getElementById('answer-input').value = answer;
         docB.getElementById('unlock-btn').click();
         const letterShown = await waitFor(winB, () => docB.getElementById('letter').classList.contains('active'));
-        if (!letterShown) { fail('留言板: 门禁条目无法解锁（无法测回信）'); }
+        if (!letterShown) { fail('留言板: 门禁条目无法解锁（无法测留言框）'); }
         else {
           const replyShown = docB.getElementById('guestbook-reply').style.display === 'block';
-          if (!replyShown) { fail('留言板: 解锁后信件回信块未显示'); }
-          else pass('留言板: 解锁后信件回信块显示');
+          if (!replyShown) { fail('留言板: 解锁后信末留言块未显示'); }
+          else pass('留言板: 解锁后信末留言块显示');
+          // 匿名留言框：无标题/无提示/无名字输入框，占位「给新人留言」、按钮「送出留言」
+          if (docB.getElementById('guest-name-reply') !== null) {
+            fail('留言板: 信末留言框仍保留了名字输入框');
+          } else pass('留言板: 信末留言框无名字输入框（匿名）');
+          const replyTextEl = docB.getElementById('guest-text-reply');
+          if (!replyTextEl || replyTextEl.placeholder !== '给新人留言') {
+            fail(`留言板: 信末留言框占位应为「给新人留言」→ 实际「${replyTextEl && replyTextEl.placeholder}」`);
+          } else pass('留言板: 信末留言框占位为「给新人留言」');
+          const replyBtn = docB.getElementById('guest-submit-reply');
+          if (!replyBtn || replyBtn.textContent !== '送出留言') {
+            fail(`留言板: 信末留言框按钮应为「送出留言」→ 实际「${replyBtn && replyBtn.textContent}」`);
+          } else pass('留言板: 信末留言框按钮为「送出留言」');
           const expectedTo = (data[gatedId].letters[0] && data[gatedId].letters[0].to) || '';
           docB.getElementById('guest-text-reply').value = '祝你幸福！';
           docB.getElementById('guest-submit-reply').click();
           const sentB = await waitFor(winB, () => postsB.length === 1);
-          if (!sentB) { fail('留言板: 回信未发出 POST'); }
+          if (!sentB) { fail('留言板: 留言未发出 POST'); }
           else {
             let b = null;
-            try { b = JSON.parse(postsB[0].init.body); } catch (e) { fail('留言板: 回信 body 非 JSON'); }
-            if (b && (b.type !== 'letter' || b.to !== expectedTo)) {
-              fail(`留言板: 回信 body 应为 {type:'letter', to:'${expectedTo}'} → 实际 ${JSON.stringify(b)}`);
+            try { b = JSON.parse(postsB[0].init.body); } catch (e) { fail('留言板: 留言 body 非 JSON'); }
+            if (b && (b.type !== 'letter' || b.to !== expectedTo || b.name !== '')) {
+              fail(`留言板: 留言 body 应为 {type:'letter', to:'${expectedTo}', name:''} → 实际 ${JSON.stringify(b)}`);
             } else if (b) {
-              pass(`留言板: 回信 body 正确（type=letter, to=${expectedTo}）`);
+              pass(`留言板: 留言 body 正确（type=letter, to=${expectedTo}, name 为空）`);
             }
           }
         }
@@ -635,10 +647,10 @@ async function checkGuestbookFlow(data, configById) {
         domB.window.close();
       }
     } else {
-      pass('留言板: config 缺失真实收信码，跳过回信流程测试');
+      pass('留言板: config 缺失真实收信码，跳过留言流程测试');
     }
   } else {
-    pass('留言板: 当前数据无门禁条目，跳过回信流程测试');
+    pass('留言板: 当前数据无门禁条目，跳过留言流程测试');
   }
 
   // ── 场景 D：留言板未启用 → 公开块隐藏 ──

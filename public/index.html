@@ -457,7 +457,7 @@
   .download-hint.show { opacity: 1; }
   body.lightbox-open { overflow: hidden; }   /* 预览时锁定背景滚动 */
 
-  /* ── 留言板：给新人的祝福 / 给收件人的回信 ── */
+  /* ── 留言板：给新人的祝福 / 解锁后给新人留言 ── */
   .guestbook {
     margin-top: 24px;
     padding-top: 20px;
@@ -695,14 +695,11 @@
       <div class="media" id="secret-videos"></div>
       <div class="letter-sign">—— 来自新人的祝福</div>
 
-      <!-- ═══ 留言板：给收件人的回信（guestbook.json enabled 才显示） ═══ -->
+      <!-- ═══ 留言板：给新人留言（解锁后显示；匿名无标题，guestbook.json enabled 才显示） ═══ -->
       <div id="guestbook-reply" class="guestbook" style="display:none">
-        <h4 class="guestbook-title">💌 给收件人的回信</h4>
-        <p class="guestbook-hint">给 TA 留句话吧，我们会把心意转达。</p>
         <div class="guestbook-form">
-          <input type="text" id="guest-name-reply" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="你的名字（选填）">
-          <textarea id="guest-text-reply" rows="3" maxlength="500" placeholder="写下想说的话…"></textarea>
-          <button class="btn" id="guest-submit-reply">送出回信</button>
+          <textarea id="guest-text-reply" rows="3" maxlength="500" placeholder="给新人留言"></textarea>
+          <button class="btn" id="guest-submit-reply">送出留言</button>
         </div>
         <p class="guestbook-msg" id="guest-msg-reply"></p>
       </div>
@@ -799,7 +796,6 @@
   const $gbBtnPublic   = document.getElementById('guest-submit-public');
   const $gbMsgPublic   = document.getElementById('guest-msg-public');
   const $guestbookReply = document.getElementById('guestbook-reply');
-  const $gbNameReply   = document.getElementById('guest-name-reply');
   const $gbTextReply   = document.getElementById('guest-text-reply');
   const $gbBtnReply    = document.getElementById('guest-submit-reply');
   const $gbMsgReply    = document.getElementById('guest-msg-reply');
@@ -867,9 +863,9 @@
     initLyrics(entry.lyrics);            // 歌词：随背景音乐同步滚动（有 lyrics 字段才有）
     if (isGated) $answer.focus();
 
-    // 留言板：公开「给新人的祝福」框仅无收件人条目显示——这类条目没有解锁后回信，
+    // 留言板：公开「给新人的祝福」框仅无收件人条目显示——这类条目没有解锁后留言，
     // 扫码留言就是唯一互动；有收件人（letters）的条目扫码后不显示祝福框，
-    // 解锁后用信件视图里的「给收件人的回信」即可。config 条目 guestbook:false 时该页关闭；
+    // 解锁后用信末匿名「给新人留言」框即可。config 条目 guestbook:false 时该页关闭；
     // 裸地址页 #public 不 active，随父容器隐藏
     entryGbDisabled = entry.guestbook === false;
     const hasLetters = Array.isArray(entry.letters) && entry.letters.length > 0;
@@ -1014,10 +1010,10 @@
     }
   }
 
-  // ── 留言板：统一提交（公开祝福 / 信件回信），经 GB_PROVIDERS 适配器写入云数据库 ──
+  // ── 留言板：统一提交（公开祝福 / 解锁后给新人留言），经 GB_PROVIDERS 适配器写入云数据库 ──
   async function submitMessage(kind) {
     const isPublic = kind === 'public';
-    const $name = isPublic ? $gbNamePublic : $gbNameReply;
+    const $name = isPublic ? $gbNamePublic : null;   // 解锁后留言框匿名，无名字输入
     const $text = isPublic ? $gbTextPublic : $gbTextReply;
     const $btn  = isPublic ? $gbBtnPublic  : $gbBtnReply;
     const $msg  = isPublic ? $gbMsgPublic  : $gbMsgReply;
@@ -1040,21 +1036,21 @@
         type: isPublic ? 'blessing' : 'letter',
         entryId,
         to: isPublic ? currentEntryTo : currentReplyTo,
-        name: $name.value.trim(),
+        name: $name ? $name.value.trim() : '',   // 匿名留言 name 为空
         text
       };
       const resp = await GB_PROVIDERS[gb.provider].submit(gb.options, msg);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       $msg.classList.remove('error'); $msg.classList.add('ok');
-      $msg.textContent = isPublic ? '祝福已送达，谢谢！' : '回信已送达，谢谢！';
-      $text.value = '';          // 清空留言，保留名字方便再写
+      $msg.textContent = isPublic ? '祝福已送达，谢谢！' : '留言已送达，谢谢！';
+      $text.value = '';          // 清空留言，公开祝福保留名字方便再写
     } catch (err) {
       console.error('Guestbook submit failed:', err.name, err.message);
       $msg.classList.remove('ok'); $msg.classList.add('error');
       $msg.textContent = '提交失败，请稍后重试';   // 保留输入，可重试
     } finally {
       $btn.disabled = false;
-      $btn.textContent = isPublic ? '送出祝福' : '送出回信';
+      $btn.textContent = isPublic ? '送出祝福' : '送出留言';
     }
   }
 
