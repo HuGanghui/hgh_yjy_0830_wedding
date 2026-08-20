@@ -457,7 +457,7 @@
   .download-hint.show { opacity: 1; }
   body.lightbox-open { overflow: hidden; }   /* 预览时锁定背景滚动 */
 
-  /* ── 留言板：给新人的祝福 / 解锁后给新人留言 ── */
+  /* ── 留言板：给新人留言（公开区 / 解锁后，格式统一） ── */
   .guestbook {
     margin-top: 24px;
     padding-top: 20px;
@@ -673,14 +673,11 @@
     </div>
     <p class="error-msg" id="error-msg"></p>
 
-    <!-- ═══ 留言板：给新人的祝福（guestbook.json enabled 才显示） ═══ -->
+    <!-- ═══ 留言板：给新人留言（公开区，无收件人条目显示；匿名无标题，guestbook.json enabled 才显示） ═══ -->
     <div id="guestbook-public" class="guestbook" style="display:none">
-      <h3 class="guestbook-title">💌 给新人的祝福</h3>
-      <p class="guestbook-hint">写下想对我们说的话吧，我们会珍藏每一句。</p>
       <div class="guestbook-form">
-        <input type="text" id="guest-name-public" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="你的名字（选填）">
-        <textarea id="guest-text-public" rows="3" maxlength="500" placeholder="写下想对我们说的话…"></textarea>
-        <button class="btn" id="guest-submit-public">送出祝福</button>
+        <textarea id="guest-text-public" rows="3" maxlength="500" placeholder="给新人留言"></textarea>
+        <button class="btn" id="guest-submit-public">💌提交</button>
       </div>
       <p class="guestbook-msg" id="guest-msg-public"></p>
     </div>
@@ -791,7 +788,6 @@
   const $lyricsScroll = document.getElementById('lyrics-scroll');
   let musicPlaying = false;   // 背景音乐播放状态（true=播放中，音符旋转）
   const $guestbookPublic = document.getElementById('guestbook-public');
-  const $gbNamePublic  = document.getElementById('guest-name-public');
   const $gbTextPublic  = document.getElementById('guest-text-public');
   const $gbBtnPublic   = document.getElementById('guest-submit-public');
   const $gbMsgPublic   = document.getElementById('guest-msg-public');
@@ -800,7 +796,6 @@
   const $gbBtnReply    = document.getElementById('guest-submit-reply');
   const $gbMsgReply    = document.getElementById('guest-msg-reply');
   let gb = { enabled: false };            // guestbook.json 客户端配置
-  let currentEntryTo = '';                // 当前条目公开区 To 标签（多收件人并列）
   let currentReplyTo = '';                // 当前解锁收件人（信件回信归属）
   let entryGbDisabled = false;            // 当前条目是否关闭留言板（config 条目 guestbook:false）
 
@@ -863,14 +858,13 @@
     initLyrics(entry.lyrics);            // 歌词：随背景音乐同步滚动（有 lyrics 字段才有）
     if (isGated) $answer.focus();
 
-    // 留言板：公开「给新人的祝福」框仅无收件人条目显示——这类条目没有解锁后留言，
-    // 扫码留言就是唯一互动；有收件人（letters）的条目扫码后不显示祝福框，
-    // 解锁后用信末匿名「给新人留言」框即可。config 条目 guestbook:false 时该页关闭；
-    // 裸地址页 #public 不 active，随父容器隐藏
+    // 留言板：公开「给新人留言」框仅无收件人条目显示——这类条目没有解锁后留言，
+    // 扫码留言就是唯一互动（匿名无标题，与解锁后留言框同格式）；
+    // 有收件人（letters）的条目扫码后不显示留言框，解锁后用信末「给新人留言」框即可。
+    // config 条目 guestbook:false 时该页关闭；裸地址页 #public 不 active，随父容器隐藏
     entryGbDisabled = entry.guestbook === false;
     const hasLetters = Array.isArray(entry.letters) && entry.letters.length > 0;
     if (gbReady && !entryGbDisabled && !hasLetters) {
-      currentEntryTo = '';
       $guestbookPublic.style.display = 'block';
     }
   }
@@ -982,7 +976,7 @@
     renderMedia($secretVideos, payload.videos, true);
     $letter.classList.add('active');
     if ($letter.scrollIntoView) $letter.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    // 留言板：信件视图内的回信块（归属当前收件人；该条目 guestbook:false 时同样关闭）
+    // 留言板：信件视图内的留言框（归属当前收件人；该条目 guestbook:false 时同样关闭）
     currentReplyTo = to || '';
     if (gbReady && !entryGbDisabled) $guestbookReply.style.display = 'block';
   }
@@ -1010,10 +1004,9 @@
     }
   }
 
-  // ── 留言板：统一提交（公开祝福 / 解锁后给新人留言），经 GB_PROVIDERS 适配器写入云数据库 ──
+  // ── 留言板：统一提交（公开祝福 / 解锁后给新人留言），两处均匿名，经 GB_PROVIDERS 适配器写入云数据库 ──
   async function submitMessage(kind) {
     const isPublic = kind === 'public';
-    const $name = isPublic ? $gbNamePublic : null;   // 解锁后留言框匿名，无名字输入
     const $text = isPublic ? $gbTextPublic : $gbTextReply;
     const $btn  = isPublic ? $gbBtnPublic  : $gbBtnReply;
     const $msg  = isPublic ? $gbMsgPublic  : $gbMsgReply;
@@ -1035,22 +1028,22 @@
       const msg = {
         type: isPublic ? 'blessing' : 'letter',
         entryId,
-        to: isPublic ? currentEntryTo : currentReplyTo,
-        name: $name ? $name.value.trim() : '',   // 匿名留言 name 为空
+        to: isPublic ? '' : currentReplyTo,   // 公开留言发给新人 to 恒为空；解锁后留言归属收件人
+        name: '',                             // 两处均匿名，name 为空
         text
       };
       const resp = await GB_PROVIDERS[gb.provider].submit(gb.options, msg);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       $msg.classList.remove('error'); $msg.classList.add('ok');
       $msg.textContent = isPublic ? '祝福已送达，谢谢！' : '留言已送达，谢谢！';
-      $text.value = '';          // 清空留言，公开祝福保留名字方便再写
+      $text.value = '';          // 清空留言
     } catch (err) {
       console.error('Guestbook submit failed:', err.name, err.message);
       $msg.classList.remove('ok'); $msg.classList.add('error');
       $msg.textContent = '提交失败，请稍后重试';   // 保留输入，可重试
     } finally {
       $btn.disabled = false;
-      $btn.textContent = isPublic ? '送出祝福' : '💌提交';
+      $btn.textContent = '💌提交';
     }
   }
 

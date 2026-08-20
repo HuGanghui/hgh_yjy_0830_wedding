@@ -18,7 +18,7 @@ QR 码加密解锁系统，**一种入口（二维码直达）**：
 - 任何修改、新增、删除文件，完成一个逻辑单元后立即 `git add` + `git commit`，不允许改动长期停留在工作区。
 - 提交前先 `git status` 和 `git diff`，确认只包含预期改动，绝不误提交 `config.json`（含答案/密钥）和 `qrcodes/`（QR 码）——见下方「Git 约定」。
 - 提交信息使用中文、动词开头的描述性写法（参考现有 commit 风格），例如 `feat: 新增视频内容支持`、`fix: 修复答案含中文空格时解密失败`。
-- **提交前自动自检**：仓库启用 pre-commit 钩子（`.githooks/pre-commit`，已提交入库）——暂存区涉及 `public/`（构建产物）/ `scripts/` / `.githooks/` 时，`git commit` 自动运行 `node scripts/verify.js`（① config↔data.json 条目互查 ② 真实收信码解密校验 + 错误收信码被拒 ③ 媒体路径磁盘/git 大小写校验 ④ QR 码 PNG 完整性 + jsqr 解码内容 ⑤ jsdom 跑真实 index.html 解锁流程冒烟 ⑥ Lightbox 图片放大预览 + 下载 ⑦ 一码多信（同一二维码多收件人，demo：A-05 花花/梁雪/小童 三码三信）⑧ 动效冒烟（花瓣进页飘落一阵即停，不影响解锁流程）⑨ 留言板（guestbook.json 与 config 一致性 + 浏览器提交祝福/留言冒烟，含公开块显示/门禁条目隐藏公开祝福块/匿名留言框/空拦截/POST 请求断言/失败重试/disabled 隐藏/条目级 guestbook:false 关闭）⑩ 背景音乐（有 music 条目 → 音符按钮显示/audio.src 指向/进页自动播放旋转/点按钮切换；自动播放被拦 → 首次手势兜底；play() 缓冲挂起时点击按钮立即给播放态反馈；WeixinJSBridgeReady 事件补试自动播放；无 music → 按钮隐藏）⑪ 歌词（有 lyrics 条目 → 歌词面板显示/行数与 LRC 一致/timeupdate 高亮当前行；无 lyrics → 面板隐藏）⑫ 描述落点突出块（有 emphasis 条目 → 块显示/文本与字段一致/独白已从描述正文拆出；无 emphasis → 隐藏）），任一失败**阻止提交**；纯文档提交自动跳过。⚠️ 该钩子靠 `git config core.hooksPath .githooks` 生效（配置不随克隆走），**新环境必须先执行这句**，否则钩子不生效。
+- **提交前自动自检**：仓库启用 pre-commit 钩子（`.githooks/pre-commit`，已提交入库）——暂存区涉及 `public/`（构建产物）/ `scripts/` / `.githooks/` 时，`git commit` 自动运行 `node scripts/verify.js`（① config↔data.json 条目互查 ② 真实收信码解密校验 + 错误收信码被拒 ③ 媒体路径磁盘/git 大小写校验 ④ QR 码 PNG 完整性 + jsqr 解码内容 ⑤ jsdom 跑真实 index.html 解锁流程冒烟 ⑥ Lightbox 图片放大预览 + 下载 ⑦ 一码多信（同一二维码多收件人，demo：A-05 花花/梁雪/小童 三码三信）⑧ 动效冒烟（花瓣进页飘落一阵即停，不影响解锁流程）⑨ 留言板（guestbook.json 与 config 一致性 + 浏览器提交祝福/留言冒烟，含公开块显示/门禁条目隐藏公开留言块/两处匿名留言框格式一致/空拦截/POST 请求断言/失败重试/disabled 隐藏/条目级 guestbook:false 关闭）⑩ 背景音乐（有 music 条目 → 音符按钮显示/audio.src 指向/进页自动播放旋转/点按钮切换；自动播放被拦 → 首次手势兜底；play() 缓冲挂起时点击按钮立即给播放态反馈；WeixinJSBridgeReady 事件补试自动播放；无 music → 按钮隐藏）⑪ 歌词（有 lyrics 条目 → 歌词面板显示/行数与 LRC 一致/timeupdate 高亮当前行；无 lyrics → 面板隐藏）⑫ 描述落点突出块（有 emphasis 条目 → 块显示/文本与字段一致/独白已从描述正文拆出；无 emphasis → 隐藏）），任一失败**阻止提交**；纯文档提交自动跳过。⚠️ 该钩子靠 `git config core.hooksPath .githooks` 生效（配置不随克隆走），**新环境必须先执行这句**，否则钩子不生效。
 - **较大功能改动用测试兜底**：新增或修改功能（尤其是 `public/index.html` 里的交互/逻辑）时，必须同步在 `scripts/verify.js` 中补充对应的自检测试（如解锁流程、Lightbox 的 DOM 冒烟），与代码**一并提交**；仅纯文档或样式微调可豁免。新测试未过不得提交。
 
 ## 常用命令
@@ -107,7 +107,7 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 
 ## 留言板（Guestbook）：朋友写祝福 / 给新人留言（云数据库直写）
 
-扫码页增加留言输入框：**公开区**「给新人的祝福」仅**无收件人条目**显示（有收件人的门禁条目扫码后不显示祝福框——这类条目解锁后用信末留言框即可，避免同页两个输入框）；解锁后**信件视图**信末**匿名「给新人留言」框**（无标题/无名字输入，占位「给新人留言」、按钮「💌提交」，直接写给新人）。只收集给新人看，**页面不回显他人留言**——新人到 CloudBase 控制台查看/导出。
+扫码页留言框有两种展示位置、**格式统一**（均匿名无标题/无提示/无名字输入，占位「给新人留言」、按钮「💌提交」，直接写给新人）：**公开区**「给新人留言」框仅**无收件人条目**显示（这类条目扫码留言是唯一互动）；**有收件人的门禁条目**扫码后不显示留言框，解锁后**信件视图**信末显示同格式「给新人留言」框。只收集给新人看，**页面不回显他人留言**——新人到 CloudBase 控制台查看/导出。
 
 **存储抽象（provider + options）**：`config.json` 的 `guestbook` 块声明后端，页面用 `GB_PROVIDERS` 适配器 map 分发，换后端零页面逻辑改动：
 ```json
@@ -132,7 +132,7 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 
 **换 Supabase**：`index.html` 的 `GB_PROVIDERS` 加 `supabase.submit`（POST `${url}/rest/v1/${table}` + `apikey`/`Authorization: Bearer` 头）、`build.js` 的 `GB_PROVIDERS` 加必填表 `['url','anonKey','table']`、config 换 options、控制台开 RLS「仅插入、禁止读」。
 
-**verify 覆盖**（`scripts/verify.js`）：① 构建产物一致性 `checkGuestbookBuild`（config ↔ guestbook.json 逐字段）；② 浏览器冒烟 `checkGuestbookFlow`（公开块显示含无收件人、空文本拦截、POST URL/头/body 不含权限字段、成功反馈后可复用、失败保留输入、解锁后信末匿名留言框（无名字输入/占位「给新人留言」/按钮「💌提交」/body 归属收件人且 name 为空）、门禁条目扫码后公开祝福块隐藏、disabled 隐藏、条目级 guestbook:false 关闭）；③ 逐条目校验 config ↔ data 的 `guestbook:false` 与 `emphasis` 双向一致、`lyrics` 媒体路径；④ `checkLyrics` 歌词冒烟（有 lyrics → 面板显示/行数与 LRC 一致/timeupdate 高亮当前行；无 lyrics → 隐藏）；⑤ `checkEmphasis` 突出块冒烟（有 emphasis → 块显示/文本一致/真实 walking-fish 独白已从描述正文拆出；无 emphasis → 隐藏）。⚠️ 服务端权限（云数据库安全规则）强制力无法在 jsdom 测，需手动 curl 验证一次（POST 应 200 + `{"code":0}`、空文本应 400、OPTIONS 预检应带 CORS 头）。
+**verify 覆盖**（`scripts/verify.js`）：① 构建产物一致性 `checkGuestbookBuild`（config ↔ guestbook.json 逐字段）；② 浏览器冒烟 `checkGuestbookFlow`（公开块显示含无收件人、公开与解锁后两处留言框格式一致（均无名字输入/占位「给新人留言」/按钮「💌提交」）、空文本拦截、POST URL/头/body 不含权限字段（name 均为空；解锁后 to 归属收件人）、成功反馈后可复用、失败保留输入、门禁条目扫码后公开留言块隐藏、disabled 隐藏、条目级 guestbook:false 关闭）；③ 逐条目校验 config ↔ data 的 `guestbook:false` 与 `emphasis` 双向一致、`lyrics` 媒体路径；④ `checkLyrics` 歌词冒烟（有 lyrics → 面板显示/行数与 LRC 一致/timeupdate 高亮当前行；无 lyrics → 隐藏）；⑤ `checkEmphasis` 突出块冒烟（有 emphasis → 块显示/文本一致/真实 walking-fish 独白已从描述正文拆出；无 emphasis → 隐藏）。⚠️ 服务端权限（云数据库安全规则）强制力无法在 jsdom 测，需手动 curl 验证一次（POST 应 200 + `{"code":0}`、空文本应 400、OPTIONS 预检应带 CORS 头）。
 
 ## Git 约定（安全相关）
 

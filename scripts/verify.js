@@ -22,7 +22,7 @@
 //       config 未启用 / 校验降级 → 产物 enabled=false；config.json 缺失时优雅跳过。
 //   12. 留言板浏览器冒烟（jsdom，测试二内）：公开祝福块显示（含无收件人条目）、空文本拦截不发请求、
 //       POST URL/头/body 正确且不含权限字段、成功反馈后可复用、失败保留输入可重试；
-//       解锁门禁条目后信件回信块显示、body 归属收件人；disabled 时公开块隐藏。
+//       公开与解锁后两处留言框格式一致（均匿名）；解锁门禁条目后信末留言框显示、body 归属收件人；disabled 时公开块隐藏。
 //       ⚠️ 服务端权限（云数据库安全规则）的强制力无法在 jsdom 测（无真实网络），靠控制台配置 + 手动 curl 验证。
 //   13. 背景音乐冒烟（jsdom，测试二内）：有 music 条目 → 音符按钮显示/audio.src 指向/进页自动播放（旋转）、
 //       点按钮暂停→恢复；自动播放被拦（浏览器/微信）→ 首次手势兜底启动；无 music 条目 → 按钮隐藏不播放。
@@ -497,7 +497,7 @@ async function checkGuestbookFlow(data, configById) {
   const baseId = plainId || gatedId;
   if (!baseId) { pass('留言板: 无任何条目，跳过'); return; }
 
-  // ── 场景 A：留言板启用 + 公开祝福提交 ──
+  // ── 场景 A：留言板启用 + 公开祝福提交（匿名「给新人留言」框，与解锁后留言框同格式） ──
   const posts = [];
   const dom = createDom(data, baseId, {
     guestbook: gbCfg,
@@ -514,7 +514,19 @@ async function checkGuestbookFlow(data, configById) {
     pass(plainId ? '留言板: 公开留言块显示（无收件人条目也显示）'
                  : '留言板: 公开留言块显示（当前数据无无收件人条目，用门禁条目验证）');
 
-    const $gName = doc.getElementById('guest-name-public');
+    // ① 公开框同解锁后留言框格式：无标题/无提示/无名字输入框，占位「给新人留言」、按钮「💌提交」
+    if (doc.getElementById('guest-name-public') !== null) {
+      fail('留言板: 公开留言块仍保留了名字输入框');
+    } else pass('留言板: 公开留言块无名字输入框（匿名）');
+    const pubTextEl = doc.getElementById('guest-text-public');
+    if (!pubTextEl || pubTextEl.placeholder !== '给新人留言') {
+      fail(`留言板: 公开留言块占位应为「给新人留言」→ 实际「${pubTextEl && pubTextEl.placeholder}」`);
+    } else pass('留言板: 公开留言块占位为「给新人留言」');
+    const pubBtn = doc.getElementById('guest-submit-public');
+    if (!pubBtn || pubBtn.textContent !== '💌提交') {
+      fail(`留言板: 公开留言块按钮应为「💌提交」→ 实际「${pubBtn && pubBtn.textContent}」`);
+    } else pass('留言板: 公开留言块按钮为「💌提交」');
+
     const $gText = doc.getElementById('guest-text-public');
     const $gBtn  = doc.getElementById('guest-submit-public');
     const $gMsg  = doc.getElementById('guest-msg-public');
@@ -527,8 +539,7 @@ async function checkGuestbookFlow(data, configById) {
     if (posts.length !== 0) { fail(`留言板: 空提交竟发出了 ${posts.length} 次请求`); }
     else pass('留言板: 空提交未发出请求');
 
-    // ③ 填名字+留言提交 → POST URL/方法/头/body 正确、body 不含权限字段
-    $gName.value = '小胡';
+    // ③ 填留言提交 → POST URL/方法/头/body 正确、body 不含权限字段（匿名，name 为空）
     $gText.value = '新婚快乐，百年好合！';
     $gBtn.click();
     const sent = await waitFor(win, () => posts.length === 1);
@@ -550,9 +561,9 @@ async function checkGuestbookFlow(data, configById) {
     try { body = JSON.parse(p.init.body); } catch (e) { fail('留言板: POST body 非合法 JSON'); }
     if (body) {
       const okBody = body.type === 'blessing' && body.entryId === baseId
-        && body.name === '小胡' && body.text === '新婚快乐，百年好合！' && !body.ACL;
-      if (!okBody) fail(`留言板: POST body 不正确（应 type=blessing/entryId=${baseId}/name/text，不含 ACL）→ ${JSON.stringify(body)}`);
-      else pass('留言板: POST body 正确（type/entryId/name/text，不含公开写 ACL）');
+        && body.name === '' && body.text === '新婚快乐，百年好合！' && !body.ACL;
+      if (!okBody) fail(`留言板: POST body 不正确（应 type=blessing/entryId=${baseId}/name 为空/text，不含 ACL）→ ${JSON.stringify(body)}`);
+      else pass('留言板: POST body 正确（type/entryId/匿名 name/text，不含公开写 ACL）');
     }
 
     // ④ 成功提示 + 表单可复用
@@ -560,7 +571,7 @@ async function checkGuestbookFlow(data, configById) {
     if (!okShown) { fail('留言板: 未显示成功提示'); }
     else pass('留言板: 成功提示出现');
     if ($gText.value !== '') fail('留言板: 成功后留言未清空');
-    else pass('留言板: 成功后留言已清空（保留名字）');
+    else pass('留言板: 成功后留言已清空');
 
     $gText.value = '第二条祝福';
     $gBtn.click();
@@ -687,7 +698,7 @@ async function checkGuestbookFlow(data, configById) {
     domE.window.close();
   }
 
-  // ── 场景 F：门禁条目（有解锁后回信）→ 扫码后公开祝福块隐藏，解锁后用回信块 ──
+  // ── 场景 F：门禁条目（有解锁后留言）→ 扫码后公开留言框隐藏，解锁后用信末留言框 ──
   if (gatedId) {
     const domF = createDom(data, gatedId, {
       guestbook: { enabled: true, provider: 'cloudbase', options: { url: 'https://cf.test/guestbook' } }
@@ -697,9 +708,9 @@ async function checkGuestbookFlow(data, configById) {
     try {
       await waitFor(winF, () => docF.getElementById('public').classList.contains('active'));
       if (docF.getElementById('guestbook-public').style.display === 'none') {
-        pass(`留言板: [${gatedId}] 门禁条目扫码后不显示公开祝福块（解锁后用回信块）`);
+        pass(`留言板: [${gatedId}] 门禁条目扫码后不显示公开留言框（解锁后用信末留言框）`);
       } else {
-        fail(`留言板: [${gatedId}] 门禁条目扫码后仍显示了公开祝福块`);
+        fail(`留言板: [${gatedId}] 门禁条目扫码后仍显示了公开留言框`);
       }
     } finally {
       domF.window.close();
@@ -1299,7 +1310,7 @@ async function main() {
   section('一码多信 · 同一二维码多收件人');
   await checkMultiLetterRouting(data, configById);
 
-  section('留言板 · 提交祝福 / 回信（浏览器）');
+  section('留言板 · 提交祝福 / 留言（浏览器）');
   await checkGuestbookFlow(data, configById);
 
   section('裸地址 · 无 ?id= 提示');
