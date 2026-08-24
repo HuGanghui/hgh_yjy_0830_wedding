@@ -1,61 +1,23 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文档是给 Claude Code 的**行为约束与硬契约**。参考细节（schema、媒体布局、留言板 provider、verify 清单）拆在 `docs/`，按需阅读；**操作手册与部署步骤见 README.md**（已覆盖，本文件不重复）。
 
 ## 项目概述
 
-QR 码加密解锁系统，**一种入口（二维码直达）**：
-- **二维码直达（直开）**：每个条目生成一个 QR 码，指向 `public/index.html?id=<id>`——**URL 只与 baseUrl 和 id 相关，永不变**。扫码后直接看到公开内容——照片 + 描述文字（无加密环节）；输入收信码答对后，浏览器本地解密并**跳转到专属信件视图**（「致 [to] + 正文 + 图片/视频 + 落款」的信件卡片）。
-- **一码多信**：一个条目可携带多封信（config 用 `letters: [{to, answer, secret}, ...]`，如 A-05：同一张照片，花花/梁雪/小童扫**同一个二维码** → 各自输入自己的收信码 → 各自的专属信件）。内容/收信人增删都**无需更换二维码**。
-- 零服务器，纯静态。**主托管：腾讯云 CloudBase 静态网站托管**（国内 200+ CDN 节点，扫码打开/图片/音频加载快）；**GitHub Pages 保留作镜像**（push 后 CI 自动跟随，旧二维码不再指向它）。
-
-**答案本身就是解密密钥**——`config.json` 中的 `answer` 字段从不存储在任何输出里。只有**额外内容（secret）**经 PBKDF2 派生密钥 + AES-GCM 加密：正确答案认证通过才解密成功，错误答案被拒绝，因此没有「正确答案库」可被窃取。公开内容（照片 / 描述 / 问题）为明文。
+- **一种入口（二维码直达）**：每条目生成 QR 码 → `public/index.html?id=<id>`——URL 只与 baseUrl 和 id 相关，**永不变**。扫码直接看到公开内容（照片 + 描述）；有收件人的门禁条目输入收信码答对后，浏览器本地解密并跳转到专属信件视图。
+- **一码多信**：一个条目可携带多封信（config `letters`，如 A-05 同一张照片多收件人扫**同一二维码**各自答自己的码 → 各自专属信）。内容/收件人增删都**无需更换二维码**。
+- **零服务器，纯静态**。主托管腾讯云 CloudBase 静态托管；GitHub Pages 作镜像（push 后 CI 自动跟随）。
+- **答案本身就是解密密钥**——`config.json` 的 `answer` 从不存储在任何输出里。额外内容（`secret`）经 PBKDF2 派生密钥 + AES-GCM 加密，正确答案认证通过才解密；公开内容（照片/描述/问题）明文。
 
 ## 工作规则（强制）
 
-**所有改动都必须通过 git 管理，不得绕过版本控制：**
+**所有改动必须经 git 管理**，完成一个逻辑单元立即 `git add` + `git commit`；提交前先 `git status` + `git diff` 确认只含预期改动，绝不误提交 `config.json`（含答案/密钥）和 `qrcodes/`。提交信息用中文、动词开头（如 `feat: 新增视频内容支持`）。
 
-- 任何修改、新增、删除文件，完成一个逻辑单元后立即 `git add` + `git commit`，不允许改动长期停留在工作区。
-- 提交前先 `git status` 和 `git diff`，确认只包含预期改动，绝不误提交 `config.json`（含答案/密钥）和 `qrcodes/`（QR 码）——见下方「Git 约定」。
-- 提交信息使用中文、动词开头的描述性写法（参考现有 commit 风格），例如 `feat: 新增视频内容支持`、`fix: 修复答案含中文空格时解密失败`。
-- **提交前自动自检**：仓库启用 pre-commit 钩子（`.githooks/pre-commit`，已提交入库）——暂存区涉及 `public/`（构建产物）/ `scripts/` / `.githooks/` 时，`git commit` 自动运行 `node scripts/verify.js`（① config↔data.json 条目互查 ② 真实收信码解密校验 + 错误收信码被拒 ③ 媒体路径磁盘/git 大小写校验 ④ QR 码 PNG 完整性 + jsqr 解码内容 ⑤ jsdom 跑真实 index.html 解锁流程冒烟 ⑥ Lightbox 图片放大预览 + 下载 ⑦ 一码多信（同一二维码多收件人，demo：A-05 花花/梁雪/小童 三码三信）⑧ 动效冒烟（花瓣进页飘落一阵即停，不影响解锁流程）⑨ 留言板（guestbook.json 与 config 一致性 + 浏览器提交祝福/留言冒烟，含公开块显示/门禁条目隐藏公开留言块/两处匿名留言框格式一致/空拦截/POST 请求断言/失败重试/disabled 隐藏/条目级 guestbook:false 关闭）⑩ 背景音乐（有 music 条目 → 音符按钮显示/audio.src 指向/进页自动播放旋转/点按钮切换；自动播放被拦 → 首次手势兜底；play() 缓冲挂起时点击按钮立即给播放态反馈；WeixinJSBridgeReady 事件补试自动播放；无 music → 按钮隐藏）⑪ 歌词（有 lyrics 条目 → 歌词面板显示/行数与 LRC 一致/timeupdate 高亮当前行；无 lyrics → 面板隐藏）⑫ 描述落点突出块（有 emphasis 条目 → 块显示/文本与字段一致/独白已从描述正文拆出；无 emphasis → 隐藏）），任一失败**阻止提交**；纯文档提交自动跳过。⚠️ 该钩子靠 `git config core.hooksPath .githooks` 生效（配置不随克隆走），**新环境必须先执行这句**，否则钩子不生效。
-- **较大功能改动用测试兜底**：新增或修改功能（尤其是 `public/index.html` 里的交互/逻辑）时，必须同步在 `scripts/verify.js` 中补充对应的自检测试（如解锁流程、Lightbox 的 DOM 冒烟），与代码**一并提交**；仅纯文档或样式微调可豁免。新测试未过不得提交。
+- **提交前自动自检**：pre-commit 钩子（`.githooks/pre-commit`）在暂存区涉及 `public/` / `scripts/` / `.githooks/` 时自动跑 `node scripts/verify.js`，任一失败阻止提交；纯文档提交自动跳过。**覆盖清单（① config↔data 互查 ② 真实码解密+错误码被拒 ③ 媒体路径大小写 ④ QR 完整性+jsqr 解码 ⑤ jsdom 解锁流程 ⑥ Lightbox 放大/下载 ⑦ 一码多信 ⑧ 花瓣动效 ⑨ 留言板 ⑩ 背景音乐 ⑪ 歌词 ⑫ emphasis 突出块）详见 [`docs/verify-coverage.md`](docs/verify-coverage.md)。**
+- ⚠️ 钩子靠 `git config core.hooksPath .githooks` 生效（配置不随克隆走），**新环境必须先执行这句**，否则钩子不生效。
+- **较大功能改动用测试兜底**：新增/修改功能（尤其 `public/index.html` 交互/逻辑）必须同步在 `scripts/verify.js` 补自检测试，与代码一并提交；仅纯文档或样式微调可豁免。新测试未过不得提交。
 
-## 常用命令
-
-```bash
-npm install              # 安装依赖（qrcode + sharp；sharp 用于构建时照片缩放压缩）
-cp config.example.json config.json   # 首次创建配置
-npm run build            # 构建：读取 config.json → 生成 public/data.json + qrcodes/*.png
-npm run verify           # 提交前自检（pre-commit 自动跑）：条目一致性 + 解密链路 + 媒体路径 + QR 内容 + 浏览器流程（含图片放大预览/下载/一码多信/花瓣动效/留言板）
-git config core.hooksPath .githooks  # 一次性设置：启用 pre-commit 钩子（新环境必跑）
-
-# 部署（主托管 CloudBase，镜像 GitHub Pages，见「部署」）
-tcb login                # 首次：登录腾讯云（浏览器授权）
-tcb env use guestbook-d2gg4yl5q45f02e97   # 选用环境（envId 不带 appId 后缀）
-tcb hosting deploy ./public --env-id guestbook-d2gg4yl5q45f02e97 --yes   # 推 CloudBase 静态托管
-git push origin main     # 提交产物后 push → GH Pages 镜像自动更新
-```
-
-本地验证：
-```bash
-# 浏览器端验证（模拟托管环境）——务必用支持 Range 的服务器，否则视频无法拖动进度条
-node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8888，目录 public
-# 访问 http://localhost:8888/?id=<entryId>
-# ⚠️ Python 的 http.server 不支持 Range，视频会「只有声音、画面不动、拉不动进度条」。
-# ⚠️ CloudBase 默认域名（*.tcloudbaseapp.com）同样不支持 Range（tcbgw 网关对 Range 返回 200 全量，
-#    上游 COS 本身支持）→ 线上视频拉不动进度条；GitHub Pages 镜像支持 Range、可正常看视频。
-#    要修只能绑自定义 CDN 域名（需备案）。
-
-# Node 端到端加解密验证（一行的 node -e，见 README「测试一」）
-# 用 config.json 中的真实 answer 验证解密成功、错误答案被拒绝
-```
-
-## 架构与加密契约
-
-数据流：`config.json`（编辑）→ `build.js`（本地加密 + 拷贝媒体 + 留言板配置归一化）→ `public/data.json` + `public/media/` + `public/guestbook.json` + `qrcodes/*.png`（构建产物）→ `public/` 部署。
-
-**build.js 与 index.html 的加密参数必须保持同步**，改动任何一边都要改另一边：
+## 加密契约（改 build.js 或 index.html 任一边都要同步另一边）
 
 | 参数 | 值 | 位置 |
 |------|-----|------|
@@ -63,97 +25,29 @@ node server.js              # 零依赖，支持 HTTP Range/206。默认端口 8
 | AES | 256-bit GCM, 12 字节随机 IV, 16 字节 authTag | 同上 |
 | 存储布局 | `iv(12) \|\| 密文 \|\| authTag(16)` → Base64 | build.js 拼装 / index.html 拆解 |
 
-`public/data.json` schema（构建时写入，浏览器 fetch 后读取）：
-```json
-{
-  "<id>": {
-    "question": "问题",
-    "description": "公开描述文字",
-    "emphasis": "描述落点的突出块（可选，公开纯文本，不加密）",  // 页面渲染为蜡封色强调块，如信末单独写给读者的话
-    "photo": "media/<id>/photo/xxx.jpg",   // 位图照片为 1600px 回退档；SVG 照片原样
-    "photoW": 1600,   // 可选：输出照片宽高（页面据此占位，防加载时布局跳动）
-    "photoH": 2133,
-    "music": "media/<id>/music/xxx.mp3",   // 可选：公开背景音乐（扫码自动播放，保留原文件名）
-    "lyrics": "media/<id>/lyrics/xxx.lrc", // 可选：背景音乐的 LRC 歌词（随音乐同步滚动，保留原文件名）
-    "guestbook": false,  // 可选：仅该条目关闭留言板（默认开启；不写字段 = 开启）
-    "letters": [      // 门禁条目：每封信各自加密（答案即该收件人的密钥）
-      { "to": "收件人", "salt": "Base64 的 16 字节随机盐", "data": "Base64 的 [iv(12) || GCM密文 || authTag(16)]" }
-    ]
-  }
-}
-```
-**无收件人条目**（config 省略 `to`/`letters`）在 `data.json` 中只有 `description` 与 `photo` 两个字段（可选加 `music` / `lyrics` / `guestbook`），不加密、无 `letters`——页面据此（`entry.letters` 是否存在且非空）判断是否渲染问题与解锁区。config 顶层 `to`/`answer`/`secret` 简写等价于 `letters` 单元素，构建时归一化。
+`data.json` schema、媒体布局与命名约定（photo 三档变体 / secret 随机名 / music / lyrics）、一码多信路由、key 点见 [`docs/architecture.md`](docs/architecture.md)。解密逻辑核心：不存储「正确答案库」，密码即密钥、解密成功即认证；`letters` 逐封试解密，命中即该收件人。
 
-解密后的 payload（额外内容）：
-```json
-{ "text": "额外的话", "images": ["media/<id>/secret/随机名.jpg"], "videos": ["media/<id>/secret/随机名.mp4"] }
-```
+## 留言板（Guestbook）
 
-**关键点：**
-- 媒体由 `build.js` 的 `copyMedia()` 拷贝到 `public/media/<id>/`：公开照片放 `photo/`（保留原文件名）、公开背景音乐放 `music/`（保留原文件名，config 用 `music` 字段声明，data.json 写明文路径）、歌词放 `lyrics/`（保留原文件名，config 用 `lyrics` 字段声明），secret 图片/视频放 `secret/`（文件名随机：`crypto.randomBytes(16).toString('hex')` + 扩展名）。data.json 只存路径。**每次构建会先清空整个 `public/media/` 和 `qrcodes/`**，保证产物与 config 严格一致、不残留旧文件（避免过期 QR 码被误发）。
-- **照片自动优化（响应式）**：位图照片（jpg/jpeg/png/webp/heic 等）构建时经 `sharp` 摆正（EXIF）并生成 **480/960/1600 三档 × AVIF(q45)/WebP(q80)/JPEG(q75 渐进)**，带透明通道的压平到白底；`photo/<base>.jpg` 是 1600px 回退档。页面 `index.html` 用 `<picture>`+`srcset>` 按屏幕/DPR 选档，手机端只下载 ~60-220KB（实测最重的照片从 584KB 降到 WebP 216KB / AVIF 86KB）。secret 图片答对后才显示，保持单档 JPEG。视频与 SVG 原样拷贝；优化失败自动回退原样拷贝。相机原图动辄 5-11MB。源文件在 `assets/` 不受影响。
-  - ⚠️ 变体文件名约定：`photo/<base>-480|960|1600.(jpg|webp|avif)`，`index.html` 据此拼 URL，`scripts/verify.js` 会校验变体齐全（改约定要两边同步）。
-- **背景音乐（`music`）**：config 条目可选 `music` 字段（公开媒体路径），构建拷贝到 `public/media/<id>/music/`（保留原文件名）、data.json 写明文路径。扫码进页自动播放——右上角浮动音符按钮（播放时旋转），浏览器/微信拦截「带声音 autoplay」时首次点击页面任意处启动，按钮随时切换播放/暂停。无 `music` 字段的条目不显示按钮。有/无收件人条目均可配。
-- **歌词（`lyrics`）**：config 条目可选 `lyrics` 字段（.lrc 路径），构建拷贝到 `public/media/<id>/lyrics/`（保留原文件名）、data.json 写明文路径。有 `music`+`lyrics` 的条目显示歌词墙（描述下方），`timeupdate` 时高亮当前行并滚动居中（seek 自动对齐）；LRC 解析支持多时间戳/`[offset:±ms]`，加载失败静默隐藏不拦页面。无 `lyrics` 不显示面板。歌词文本版权属作品方，仅用于自持音频的个人页展示。
-- secret 的 `text` 加密进每封信的 `data` 字段；公开字段（`question`/`description`/`photo`）为明文。`to` **可选**：无特定收件人的照片可省略，页面不显示「To 某人」标签；**有收件人**（含一码多信）公开区 To 标签**并列展示全部收件人**——单收件人「To 某人」、多收件人如「To 花花 / 梁雪 / 小童」（`index.html` 用 `entry.letters.map(l => l.to).join(' / ')` 拼）。
-- **有无收件人（letters 非空）决定是否为解锁条目**：有收件人 → 必有 `question`，每封信必有 `to`/`answer`/`secret`，额外内容分别用各自 answer 加密（`build.js` 校验并加密）；无收件人 → 仅照片+描述，`question`/`answer`/`secret`/`letters` 被忽略并告警，不产出 `letters`。
-- **secret 媒体是 `public/` 下可直链的静态文件**——路径随机只是防枚举的缓解，不是真正的机密性（用户已接受该取舍）。⚠️ **仓库已公开**（GitHub Pages 免费方案要求公开仓库）：`public/media/<id>/secret/` 里的 secret 文件，任何人可直接浏览仓库下载——随机名只防「猜 URL」，不防「逛仓库」（`assets/` 源文件已 gitignore、不入库）。用户已知悉并选择接受（曾考虑媒体加密方案，暂缓）。若日后要真保密，改走「build 加密媒体 + 浏览器解密」方案。图片/视频加载用 `<img>` / `<video controls preload="metadata">` 直链，**已无 Blob URL 逻辑**。
-- 解密入口在 `public/index.html` 的 IIFE 脚本：加载后先渲染公开区 → `base64ToBytes()` → PBKDF2 deriveKey → `crypto.subtle.decrypt` → JSON.parse → 渲染 `text/images/videos`。解锁走 `tryUnlock()`：对 `entry.letters` **逐封试解密** `decryptPayload(letter, answer)`（失败返回 null），命中即该收件人 → 渲染对应专属信件。**不存储任何「正确答案库」**——密码即密钥，解密成功即认证。
-- ⚠️ **一码多信 → 同一信封内各封信的 `answer` 必须唯一**：同一收信码命中多个收件人会路由歧义（`scripts/verify.js` 会打印重复的 id+收件人作提醒，不阻断）。不同信封（不同条目）之间答案重复**无影响**——每张二维码只路由到自己的条目。
-- **专属信件视图**：答对后 `renderLetter(to, payload)`——隐藏公开区（照片/描述/输入），展示信件卡片：`致 [to]` + 正文（`white-space: pre-wrap`）+ secret 图片/视频 + 落款「来自新人的祝福」。图片继续走 Lightbox 放大预览 / 下载。
-- **裸地址（无 `?id=`）无统一入口**：页面直接提示「请扫描收到的二维码」，不再有输码路由页。
-- `public/index.html` 是零依赖单文件（原生 HTML/CSS/JS），移动端优先。
-- base64 用浏览器原生 `atob` / Node `Buffer`，注意 UTF-8 中文用 `TextEncoder`/`TextDecoder` 统一处理。
+扫码页留言框**格式统一**（匿名、无标题/提示/名字输入，占位「给新人留言」、按钮「💌提交」）：公开区框仅**无收件人条目**显示；**有收件人的门禁条目**扫码不显示，解锁后**信件视图**信末显示同格式框。页面不回显他人留言，新人到 CloudBase 控制台查看/导出。
 
-## 留言板（Guestbook）：朋友写祝福 / 给新人留言（云数据库直写）
+**硬安全约束（必须遵守）**：
+- **云函数是唯一写入口，云数据库对客户端零权限**——安全规则设 `{"read": false, "write": false}`，宾客只能经函数写入、永远无法读取他人留言。
+- 扫码页只 POST 不 GET，body 仅 `{type, entryId, to, name, text}`，**不带任何权限字段**。
+- ⚠️ `public/guestbook.json` 含**客户端连接配置（云函数 HTTP 访问地址 url），是公开配置不是机密**，勿因「像密钥」gitignore 掉（否则线上 404、留言功能静默关闭）。
+- ⚠️ `build.js` 与 `index.html` 各有一份 `GB_PROVIDERS` 必填字段表，改一边要改另一边。
 
-扫码页留言框有两种展示位置、**格式统一**（均匿名无标题/无提示/无名字输入，占位「给新人留言」、按钮「💌提交」，直接写给新人）：**公开区**「给新人留言」框仅**无收件人条目**显示（这类条目扫码留言是唯一互动）；**有收件人的门禁条目**扫码后不显示留言框，解锁后**信件视图**信末显示同格式「给新人留言」框。只收集给新人看，**页面不回显他人留言**——新人到 CloudBase 控制台查看/导出。
+provider+options 抽象、换 Supabase 步骤、手动 curl 验证见 [`docs/guestbook.md`](docs/guestbook.md)。
 
-**存储抽象（provider + options）**：`config.json` 的 `guestbook` 块声明后端，页面用 `GB_PROVIDERS` 适配器 map 分发，换后端零页面逻辑改动：
-```json
-"guestbook": {
-  "enabled": true,
-  "provider": "cloudbase",
-  "options": {
-    "url": "https://<环境ID>.service.tcloudbase.com/guestbook"
-  }
-}
-```
-- 当前实现 **cloudbase**（腾讯云）：页面把留言 POST 到配置的 `url`（云函数 HTTP 访问服务/云接入），纯 REST 零 SDK。可部署的函数代码在 `cloudbase/guestbook/`。
-- build.js 与 `public/index.html` 各有一份 `GB_PROVIDERS` 必填字段表，**改一边要改另一边**。
-- 未配置或校验失败 → build 写出 `public/guestbook.json` = `{"enabled": false}`（留言功能关闭，页面不显示输入框；config 无此块时构建**不报错**，属正常关闭态）。
-- **条目级关闭**：config 条目加 `"guestbook": false` → build 在 `data.json` 该条目写 `guestbook: false`，页面该页公开「祝福」块与解锁后「留言」块都不显示（默认不写 = 随全局开启）。适合纯音乐/氛围页不想要留言框（demo：`walking-fish`）。
+## Git 约定（安全红线）
 
-**安全模型（重要）**：云函数是**唯一写入口**，云数据库对客户端**零权限**——宾客只能经函数写入、永远无法读取他人留言。
-- **云数据库安全规则**（控制台配置，唯一强制层）：`guestbook` 集合安全规则设为 `{"read": false, "write": false}`；写数据只经云函数（函数用管理端身份，不受规则限制）。
-- **云函数**（`cloudbase/guestbook/`）负责校验（非空/长度）+ 写库 + 应答 CORS 预检；扫码页只 POST 不 GET，body 仅 `{type, entryId, to, name, text}`，不携带任何权限字段。
-- 客户端连接配置（云函数 HTTP 访问地址 `url`）公开进页面属设计接受（`public/guestbook.json` 随 `public/` 提交）；安全靠「数据库零权限 + 函数校验 + 免费额度限流」兜底。
-- 新人读取：CloudBase 控制台 → 云开发 → 数据库 → `guestbook` 集合（或导出）。免费体验版 3000 资源点/月（云函数调用 13.3 点/万次、数据库读写 200 点/万次），500 条留言约千分之几，完全覆盖。
+- `config.json`（含答案即密钥）、`qrcodes/`、`assets/`（源媒体，**务必自行备份原图**）均**已 gitignore、不入库**。
+- `public/data.json`、`public/media/`、`public/guestbook.json` 由 `npm run build` 生成，属构建产物，随 `public/` 提交（data.json 符合设计：公开字段明文、额外文字加密）。
 
-**换 Supabase**：`index.html` 的 `GB_PROVIDERS` 加 `supabase.submit`（POST `${url}/rest/v1/${table}` + `apikey`/`Authorization: Bearer` 头）、`build.js` 的 `GB_PROVIDERS` 加必填表 `['url','anonKey','table']`、config 换 options、控制台开 RLS「仅插入、禁止读」。
+## 常用命令 / 部署
 
-**verify 覆盖**（`scripts/verify.js`）：① 构建产物一致性 `checkGuestbookBuild`（config ↔ guestbook.json 逐字段）；② 浏览器冒烟 `checkGuestbookFlow`（公开块显示含无收件人、公开与解锁后两处留言框格式一致（均无名字输入/占位「给新人留言」/按钮「💌提交」）、空文本拦截、POST URL/头/body 不含权限字段（name 均为空；解锁后 to 归属收件人）、成功反馈后可复用、失败保留输入、门禁条目扫码后公开留言块隐藏、disabled 隐藏、条目级 guestbook:false 关闭）；③ 逐条目校验 config ↔ data 的 `guestbook:false` 与 `emphasis` 双向一致、`lyrics` 媒体路径；④ `checkLyrics` 歌词冒烟（有 lyrics → 面板显示/行数与 LRC 一致/timeupdate 高亮当前行；无 lyrics → 隐藏）；⑤ `checkEmphasis` 突出块冒烟（有 emphasis → 块显示/文本一致/真实 walking-fish 独白已从描述正文拆出；无 emphasis → 隐藏）。⚠️ 服务端权限（云数据库安全规则）强制力无法在 jsdom 测，需手动 curl 验证一次（POST 应 200 + `{"code":0}`、空文本应 400、OPTIONS 预检应带 CORS 头）。
+构建/验证/部署完整命令与流程见 **README.md**（含 `tcb hosting deploy`、GitHub Pages 镜像、本地 `node server.js` 预览）。Claude 常跑的仅两个：`npm run build`（本地构建）与 `npm run verify`（提交前自检）。
 
-## Git 约定（安全相关）
-
-- `config.json` **已 gitignore**——含答案（即密钥），切勿提交。
-- `qrcodes/` **已 gitignore**——QR 码通过私聊分发给对应的人，切勿提交到公开仓库。
-- `public/data.json` 与 `public/media/` 均由 `npm run build` 生成，属构建产物（`public/data.json` 现已提交、符合设计：公开字段明文、额外文字加密）。
-- `public/guestbook.json` 也是构建产物，随 `public/` 提交——含**客户端连接配置（云函数 HTTP 访问地址 url），这是公开配置不是机密**，勿因「像密钥」而 gitignore 掉（否则线上 404、留言功能静默关闭）。
-- config 中的 `photo`/`secret.images`/`secret.videos` 指向**源媒体文件**（如 `assets/`，不在 `public/` 下）。`assets/` 与 `config.json` 一样**已 gitignore、不入库**——源媒体只在本地（**务必自行备份原图**），构建产物 `public/` 照常提交部署。
-- 修改内容后重新 `npm run build` 并重新部署 `public/` 即可更新，无需改 QR 码（URL 不变）。
-
-## 部署
-
-**主托管：腾讯云 CloudBase 静态网站托管**（`tcb hosting deploy`，即控制台「文件部署」，默认域名 `*.tcloudbaseapp.com`，国内 200+ CDN 节点）；**镜像：GitHub Pages**（`.github/workflows/deploy.yml` 在 push 到 main 时自动把**已提交的 public/** 部署上去）。
-
-**部署流程（约定「本地构建 → 提交产物 → 双端上线」）：**
-```bash
-npm run build                    # 本地构建（config.json 含答案、不入库，CI 无法重建，必须在本地）
-tcb hosting deploy ./public --env-id guestbook-d2gg4yl5q45f02e97 --yes   # ① 推 CloudBase 主托管
-git add . && git commit -m "..." && git push origin main                # ② 提交并 push → GH Pages 镜像自动更新
-```
-- 首次需 `tcb login` + `tcb env use guestbook-d2gg4yl5q45f02e97`。envId 不带 appId 后缀（`tcb hosting detail` 报 "not exist" 时先 `tcb env list` 确认真实 envId）。
-- 每次构建会清空 `public/media/` 与 `qrcodes/`，产物与 config 严格一致；改内容后重新 build + 部署即可，无需改 QR 码（URL 不变）。
-- ⚠️ **环境到期**：当前为个人版，**2026-09-17 到期**，到期前须在 CloudBase 控制台续费/升级，否则静态托管与云函数下线、扫码直接挂。
-- ⚠️ **Range 限制**：CloudBase 默认域名不支持 HTTP Range（见「本地验证」），线上视频进度条受限；GitHub Pages 镜像可看视频。要修需绑自定义 CDN 域名（备案）。
+两个运营坑：
+- ⚠️ **环境到期**：CloudBase 个人版 **2026-09-17 到期**，到期前须续费/升级，否则静态托管与云函数下线、扫码直接挂。
+- ⚠️ **Range 限制**：CloudBase 默认域名（`*.tcloudbaseapp.com`）不支持 HTTP Range，线上视频拉不动进度条；GitHub Pages 镜像支持 Range 可正常看视频。要修需绑自定义 CDN 域名（备案）。本地预览务必用 `node server.js`（支持 Range），不要用 `python3 -m http.server`。
