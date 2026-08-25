@@ -25,6 +25,8 @@
       "id": "A-05",
       "question": "请输入收信码，解锁您的专属信件",
       "photo": "assets/A-05.jpg",
+      "video": "assets/shared.mp4",
+      "videoCredit": "Credit to：摄影师",
       "description": "一码多信：同一张照片、同一个二维码，多人各自输入自己的收信码 → 各自的专属信件。",
       "letters": [
         {

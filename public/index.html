@@ -108,6 +108,24 @@
     border: 1px solid var(--border);
   }
 
+  /* ── 公开共享视频：照片下方扫码即见（video 字段驱动），署名收在视频下方 ── */
+  .public-video {
+    margin-bottom: 22px;
+  }
+  .public-video video {
+    width: 100%;
+    border-radius: 8px;
+    display: block;
+    background: #000;
+  }
+  .video-credit {
+    font-size: 0.8rem;
+    line-height: 1.6;
+    color: var(--accent);
+    margin-top: 8px;
+    text-align: right;
+  }
+
   /* ── 描述落点突出块：信末单独写给读者的话（emphasis，config 字段驱动） ── */
   .emphasis {
     position: relative;
@@ -597,6 +615,12 @@
     </div>
     <p class="description" id="description"></p>
 
+    <!-- ═══ 公开共享视频：照片下方，扫码即见（有 video 字段的条目才显示） ═══ -->
+    <div id="public-video" class="public-video" style="display:none">
+      <video id="public-video-src" controls preload="metadata"></video>
+      <p class="video-credit" id="public-video-credit"></p>
+    </div>
+
     <!-- ═══ 描述落点突出块：信末单独写给读者的那句话（有 emphasis 字段的条目才显示） ═══ -->
     <div id="emphasis" class="emphasis" style="display:none"></div>
 
@@ -773,6 +797,9 @@
   const $photo        = document.getElementById('public-photo');
   const $description  = document.getElementById('description');
   const $emphasis     = document.getElementById('emphasis');
+  const $publicVideoWrap = document.getElementById('public-video');
+  const $publicVideo     = document.getElementById('public-video-src');
+  const $publicVideoCredit = document.getElementById('public-video-credit');
   const $toLabel      = document.getElementById('to-label');
   const $answer       = document.getElementById('answer-input');
   const $unlockBtn    = document.getElementById('unlock-btn');
@@ -838,6 +865,13 @@
     if (entry.emphasis) {
       $emphasis.textContent = entry.emphasis;
       $emphasis.style.display = 'block';
+    }
+
+    // 公开共享视频：照片下方扫码即见（有 video 字段的条目才显示）；videoCredit 为署名
+    if (entry.video) {
+      $publicVideo.src = entry.video;
+      $publicVideoCredit.textContent = entry.videoCredit || '';
+      $publicVideoWrap.style.display = 'block';
     }
 
     // 有 letters 字段的条目才有解锁环节；无收件人的条目仅展示照片+描述

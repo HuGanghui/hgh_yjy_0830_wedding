@@ -1161,6 +1161,81 @@ async function checkEmphasis(data) {
   }
 }
 
+// ── 公开共享视频（扫码即见，浏览器冒烟） ───────────────
+// 有 video 字段的条目：照片下方视频元素显示、src 指向构建产物、videoCredit 署名一致；
+// 无 video 条目：视频块隐藏。场景 A 用合成条目测显示逻辑（与真实产物解耦），
+// 场景 B 用真实 A-05 数据端到端断言。
+async function checkPublicVideo(data) {
+  const vidId = '__video_test__';
+  const VID = 'media/__video_test__/video/test.mp4';
+  const CREDIT = 'Credit to：测试者';
+  const withVideo = Object.assign({}, data, {
+    [vidId]: { description: '视频测试条目', video: VID, videoCredit: CREDIT }
+  });
+
+  // ── 场景 A：有 video + videoCredit → 块显示、src 正确、署名一致 ──
+  const dom = createDom(withVideo, vidId);
+  const win = dom.window;
+  const doc = win.document;
+  try {
+    if (!await waitFor(win, () => doc.getElementById('public').classList.contains('active'))) {
+      fail('公开视频: 公开区未渲染'); return;
+    }
+    const $wrap = doc.getElementById('public-video');
+    if ($wrap.style.display === 'none') { fail('公开视频: 有 video 的条目视频块未显示'); return; }
+    pass('公开视频: 有 video 的条目视频块显示');
+    const $v = doc.getElementById('public-video-src');
+    if (!$v.getAttribute('src') || $v.getAttribute('src') !== VID) {
+      fail(`公开视频: 视频 src 未指向构建产物（${$v.getAttribute('src')}）`); return;
+    }
+    pass('公开视频: 视频 src 指向公开媒体路径');
+    if (doc.getElementById('public-video-credit').textContent !== CREDIT) {
+      fail('公开视频: videoCredit 署名与字段不一致'); return;
+    }
+    pass('公开视频: videoCredit 署名文本一致');
+  } finally {
+    dom.window.close();
+  }
+
+  // ── 场景 B：真实数据中有 video 的条目（A-05）端到端 ──
+  const realId = Object.keys(data).find(id => data[id] && data[id].video);
+  if (realId) {
+    const domB = createDom(data, realId);
+    const winB = domB.window;
+    const docB = winB.document;
+    try {
+      await waitFor(winB, () => docB.getElementById('public').classList.contains('active'));
+      const $wrapB = docB.getElementById('public-video');
+      if ($wrapB.style.display === 'none') { fail(`公开视频: ${realId} 视频块未显示`); return; }
+      pass(`公开视频: 真实条目 ${realId} 视频块显示`);
+      const $vB = docB.getElementById('public-video-src');
+      if (!$vB.getAttribute('src')) { fail(`公开视频: ${realId} 视频 src 为空`); return; }
+      pass(`公开视频: ${realId} 视频 src 已填充`);
+    } finally {
+      domB.window.close();
+    }
+  } else {
+    pass('公开视频: 当前数据无带 video 的条目，跳过端到端断言');
+  }
+
+  // ── 场景 C：无 video 条目 → 块隐藏 ──
+  const plainId = Object.keys(data).find(id => data[id] && !data[id].video);
+  if (!plainId) { pass('公开视频: 当前数据所有条目都带 video，跳过隐藏校验'); return; }
+  const domC = createDom(data, plainId);
+  const winC = domC.window;
+  const docC = winC.document;
+  try {
+    await waitFor(winC, () => docC.getElementById('public').classList.contains('active'));
+    if (docC.getElementById('public-video').style.display === 'none') {
+      pass('公开视频: 无 video 条目视频块隐藏');
+    } else {
+      fail('公开视频: 无 video 条目视频块未隐藏');
+    }
+  } finally {
+    domC.window.close();
+  }
+}
+
 // ── 入口 ───────────────────────────────────────────────
 async function main() {
   console.log('🔍 构建产物自检');
@@ -1239,6 +1314,14 @@ async function main() {
 
     // 歌词（LRC，公开随音乐滚动）媒体路径
     if (entry.lyrics) checkMediaPath(entry.lyrics, tracked);
+
+    // 公开共享视频（扫码即见，照片下方）媒体路径 + videoCredit 双向一致性
+    if (entry.video) checkMediaPath(entry.video, tracked);
+    if (cfg.videoCredit && entry.videoCredit !== cfg.videoCredit) {
+      fail(`[${id}] config 有 videoCredit 但 data 未写入对应内容（未重新构建？）`);
+    } else if (!cfg.videoCredit && entry.videoCredit) {
+      fail(`[${id}] data 有 videoCredit 但 config 未声明（残留？）`);
+    }
 
     // 该条目关闭留言板（guestbook:false）双向一致性：config 声明 ⇔ data 写入
     if (cfg.guestbook === false && entry.guestbook !== false) {
@@ -1344,6 +1427,9 @@ async function main() {
 
   section('描述落点突出块');
   await checkEmphasis(data);
+
+  section('公开共享视频 · 照片下方扫码即见');
+  await checkPublicVideo(data);
 
   section('总结');
   console.log(`共 ${checks} 项检查，失败 ${failures} 项`);

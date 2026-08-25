@@ -34,7 +34,7 @@ function randomFileName() {
 }
 
 // ── 拷贝单个媒体文件到 public/media/<id>/<folder> ──
-// folder: 'photo'（公开，保留原文件名）| 'music'（公开背景音乐，保留原文件名）| 'secret'（随机文件名）
+// folder: 'photo'|'music'|'lyrics'|'video'（公开，保留原文件名）| 'secret'（随机文件名）
 // 位图照片一律缩放+重压缩输出 .jpg（带透明通道的压平到卡片白底）；视频/音频/SVG 原样拷贝。
 // 优化失败自动回退为原样拷贝，保证构建永不因个别图片中断。
 async function copyMedia(srcPath, id, folder) {
@@ -93,7 +93,7 @@ async function copyMedia(srcPath, id, folder) {
     }
   } else {
     // 视频 / 音频 / LRC / SVG 等：原样拷贝（公开目录 photo/music/lyrics 保留原文件名，secret 随机名防枚举）
-    const filename = folder === 'photo' || folder === 'music' || folder === 'lyrics'
+    const filename = folder === 'photo' || folder === 'music' || folder === 'lyrics' || folder === 'video'
       ? path.basename(srcPath)
       : randomFileName() + ext;
     dest = path.join(outDir, filename);
@@ -125,7 +125,7 @@ async function main() {
   const errors = [];
 
   for (const entry of config.entries) {
-    const { id, to, question, answer, description, photo, music, lyrics, secret, guestbook, emphasis } = entry;
+    const { id, to, question, answer, description, photo, video, videoCredit, music, lyrics, secret, guestbook, emphasis } = entry;
 
     // 校验必填字段（to 可选；无收件人条目只需 id/description）
     if (!id || !description) {
@@ -182,6 +182,18 @@ async function main() {
         console.log(`  📜 [${id}] 歌词: ${r.url} (${r.sizeKB} KB)`);
       } catch (err) {
         errors.push(`[${id}] 歌词 ${lyrics}: ${err.message}`);
+      }
+    }
+
+    // ── 公开视频（扫码即见，保留原文件名） ──
+    let videoUrl = null;
+    if (video) {
+      try {
+        const r = await copyMedia(video, id, 'video');
+        videoUrl = r.url;
+        console.log(`  🎬 [${id}] 公开视频: ${r.url} (${r.sizeKB} KB)`);
+      } catch (err) {
+        errors.push(`[${id}] 公开视频 ${video}: ${err.message}`);
       }
     }
 
@@ -269,6 +281,8 @@ async function main() {
         photo: photoUrl,
         ...(photoW ? { photoW, photoH } : {}),
         ...(musicUrl ? { music: musicUrl } : {}),
+        ...(videoUrl ? { video: videoUrl } : {}),
+        ...(videoCredit ? { videoCredit } : {}),
         letters: lettersOut
       };
     } else {
@@ -276,7 +290,14 @@ async function main() {
       if (question || answer || secret || (Array.isArray(entry.letters) && entry.letters.length === 0)) {
         errors.push(`[${id}] 无收件人条目仅展示照片+描述，已忽略 question/answer/secret/letters`);
       }
-      outEntry = { description, photo: photoUrl, ...(photoW ? { photoW, photoH } : {}), ...(musicUrl ? { music: musicUrl } : {}) };
+      outEntry = {
+        description,
+        photo: photoUrl,
+        ...(photoW ? { photoW, photoH } : {}),
+        ...(musicUrl ? { music: musicUrl } : {}),
+        ...(videoUrl ? { video: videoUrl } : {}),
+        ...(videoCredit ? { videoCredit } : {})
+      };
     }
 
     // 通用可选项（两个分支共用）：歌词路径 + 该条目关闭留言板（guestbook:false 才写字段，默认开启）

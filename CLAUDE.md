@@ -13,7 +13,7 @@
 
 **所有改动必须经 git 管理**，完成一个逻辑单元立即 `git add` + `git commit`；提交前先 `git status` + `git diff` 确认只含预期改动，绝不误提交 `config.json`（含答案/密钥）和 `qrcodes/`。提交信息用中文、动词开头（如 `feat: 新增视频内容支持`）。
 
-- **提交前自动自检**：pre-commit 钩子（`.githooks/pre-commit`）在暂存区涉及 `public/` / `scripts/` / `.githooks/` 时自动跑 `node scripts/verify.js`，任一失败阻止提交；纯文档提交自动跳过。**覆盖清单（① config↔data 互查 ② 真实码解密+错误码被拒 ③ 媒体路径大小写 ④ QR 完整性+jsqr 解码 ⑤ jsdom 解锁流程 ⑥ Lightbox 放大/下载 ⑦ 一码多信 ⑧ 花瓣动效 ⑨ 留言板 ⑩ 背景音乐 ⑪ 歌词 ⑫ emphasis 突出块）详见 [`docs/verify-coverage.md`](docs/verify-coverage.md)。**
+- **提交前自动自检**：pre-commit 钩子（`.githooks/pre-commit`）在暂存区涉及 `public/` / `scripts/` / `.githooks/` 时自动跑 `node scripts/verify.js`，任一失败阻止提交；纯文档提交自动跳过。**覆盖清单（① config↔data 互查 ② 真实码解密+错误码被拒 ③ 媒体路径大小写 ④ QR 完整性+jsqr 解码 ⑤ jsdom 解锁流程 ⑥ Lightbox 放大/下载 ⑦ 一码多信 ⑧ 花瓣动效 ⑨ 留言板 ⑩ 背景音乐 ⑪ 歌词 ⑫ emphasis 突出块 ⑬ 公开共享视频）详见 [`docs/verify-coverage.md`](docs/verify-coverage.md)。**
 - ⚠️ 钩子靠 `git config core.hooksPath .githooks` 生效（配置不随克隆走），**新环境必须先执行这句**，否则钩子不生效。
 - **较大功能改动用测试兜底**：新增/修改功能（尤其 `public/index.html` 交互/逻辑）必须同步在 `scripts/verify.js` 补自检测试，与代码一并提交；仅纯文档或样式微调可豁免。新测试未过不得提交。
 

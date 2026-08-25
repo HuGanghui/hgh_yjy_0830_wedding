@@ -42,6 +42,7 @@
 - **公开照片 `photo/`**（保留原文件名）：位图照片（jpg/jpeg/png/webp/heic 等）经 `sharp` 摆正（EXIF）并生成 **480/960/1600 三档 × AVIF(q45)/WebP(q80)/JPEG(q75 渐进)**，带透明通道的压平到白底；`photo/<base>.jpg` 是 1600px 回退档。页面 `<picture>`+`srcset>` 按屏幕/DPR 选档。secret 图片答对后才显示，保持单档 JPEG。视频与 SVG 原样拷贝；优化失败自动回退原样拷贝。相机原图动辄 5-11MB，源文件在 `assets/` 不受影响。
   - ⚠️ **变体文件名约定**：`photo/<base>-480|960|1600.(jpg|webp|avif)`，`index.html` 据此拼 URL，`scripts/verify.js` 会校验变体齐全（改约定要两边同步）。
 - **公开背景音乐 `music/`**（保留原文件名）：config 条目可选 `music` 字段（公开媒体路径），data.json 写明文路径。有/无收件人条目均可配。无 `music` 不显示音符按钮。
+- **公开共享视频 `video/`**（保留原文件名）：config 条目可选 `video` 字段（公开媒体路径）+ 可选 `videoCredit` 署名。渲染在公开区**照片下方、扫码即见**，有/无收件人条目均可配（一码多信时所有收件人共享同一个，无需塞进各封信的 secret）。无 `video` 不显示视频块。
 - **歌词 `lyrics/`**（保留原文件名）：config 条目可选 `lyrics` 字段（.lrc 路径）。有 `music`+`lyrics` 显示歌词墙，`timeupdate` 高亮当前行并滚动居中（seek 自动对齐）；LRC 解析支持多时间戳/`[offset:±ms]`，加载失败静默隐藏。歌词文本版权属作品方，仅用于自持音频的个人页展示。
 - **secret 图片/视频 `secret/`**（文件名随机：`crypto.randomBytes(16).toString('hex')` + 扩展名）。
 
