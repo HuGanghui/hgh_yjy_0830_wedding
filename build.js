@@ -143,7 +143,7 @@ async function main() {
     // 无任何收件人 → 仅展示照片+描述，无解锁环节。
     const letters = Array.isArray(entry.letters)
       ? entry.letters
-      : (to ? [{ to, answer, secret }] : []);
+      : (to ? [{ to, answer, secret, signer: entry.signer }] : []);
     const isGated = letters.length > 0;
 
     // ── 公开照片（直接可见，保留原文件名） ──
@@ -254,6 +254,7 @@ async function main() {
         const combined = Buffer.concat([iv, encrypted, authTag]);
         lettersOut.push({
           to: letter.to,
+          ...(letter.signer ? { signer: letter.signer } : {}),
           salt: salt.toString('base64'),
           data: combined.toString('base64')
         });

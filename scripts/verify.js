@@ -265,9 +265,10 @@ async function waitFor(win, check, timeout = 5000) {
 
 // ── 浏览器流程冒烟测试（测试二）：真实 index.html + 模拟点击 ─────
 async function checkBrowserFlow(data, configById) {
-  // 挑一个有收件人（可解锁）的条目做流程测试；没有就只验公开区渲染
-  const gatedId = Object.keys(data).find(id =>
+  // 挑一个有收件人（可解锁）的条目做流程测试；优先选带 signer 落款的，能覆盖「按收件人指定」分支；没有就只验公开区渲染
+  const gatedIds = Object.keys(data).filter(id =>
     data[id] && Array.isArray(data[id].letters) && data[id].letters.length > 0);
+  const gatedId = (gatedIds.find(id => data[id].letters[0] && data[id].letters[0].signer)) || gatedIds[0];
   const answer = configLetterAnswers(configById[gatedId])[0] || null;
 
   const dom = createDom(data, gatedId);
@@ -328,6 +329,16 @@ async function checkBrowserFlow(data, configById) {
       pass('浏览器: 专属信件正文/媒体已渲染');
     } else {
       fail('浏览器: 专属信件显示了但内容为空');
+    }
+
+    // 落款按收件人指定：data 里该封信 signer 存在 → 显示「—— {signer}」；缺省回退「来自新人的祝福」
+    const firstLetter = data[gatedId].letters[0] || {};
+    const expectSign = firstLetter.signer ? `—— ${firstLetter.signer}` : '—— 来自新人的祝福';
+    const signShown = doc.getElementById('letter-sign').textContent;
+    if (signShown !== expectSign) {
+      fail(`浏览器: 落款应为「${expectSign}」→ 实际「${signShown}」`);
+    } else {
+      pass(`浏览器: 落款按收件人指定（${signShown}）`);
     }
   } finally {
     dom.window.close();

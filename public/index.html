@@ -690,7 +690,7 @@
       <div class="letter-body" id="content-text"></div>
       <div class="media" id="secret-images"></div>
       <div class="media" id="secret-videos"></div>
-      <div class="letter-sign">—— 来自新人的祝福</div>
+      <div class="letter-sign" id="letter-sign">—— 来自新人的祝福</div>
 
       <!-- ═══ 留言板：给新人留言（解锁后显示；匿名无标题，guestbook.json enabled 才显示） ═══ -->
       <div id="guestbook-reply" class="guestbook" style="display:none">
@@ -767,6 +767,7 @@
   const $public       = document.getElementById('public');
   const $letter       = document.getElementById('letter');
   const $letterTo     = document.getElementById('letter-to');
+  const $letterSign   = document.getElementById('letter-sign');
   const $stateErr     = document.getElementById('state-error');
   const $photoWrap    = document.getElementById('photo-wrap');
   const $photo        = document.getElementById('public-photo');
@@ -948,7 +949,7 @@
       for (const letter of entry.letters) {
         const payload = await decryptPayload(letter, answer);
         if (payload) {
-          renderLetter(letter.to, payload);
+          renderLetter(letter.to, payload, letter.signer);
           return;   // return 仍会执行 finally 恢复按钮
         }
       }
@@ -968,9 +969,11 @@
 
   // ── 专属信件视图（答对后渲染） ──
   // 隐藏公开区（照片/描述/输入），跳到信件卡片：致[to] + 正文 + 图片/视频 + 落款。
-  function renderLetter(to, payload) {
+  function renderLetter(to, payload, signer) {
     $public.classList.remove('active');
     if (to) $letterTo.textContent = to;
+    // 落款：按收件人指定（config 每封信 signer 字段），缺省回退「来自新人的祝福」
+    $letterSign.textContent = signer ? `—— ${signer}` : '—— 来自新人的祝福';
     if (payload && payload.text) $content.textContent = payload.text;
     renderMedia($secretImages, payload.images, false);
     renderMedia($secretVideos, payload.videos, true);
