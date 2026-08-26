@@ -25,6 +25,9 @@
     --radius: 12px;
     --wax: #a1384a;   /* 蜡封红：破蜡开信的时刻（解锁按钮 / 信件抬头），区别于通用的暖棕 accent */
     --wax-hover: #83313f;
+    --festive-red: #b33a2c;    /* 喜庆红：留言板主色 */
+    --festive-red-hover: #94291c;
+    --festive-gold: #c69a3e;   /* 喜庆金：留言板点缀 */
     --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
   }
 
@@ -478,14 +481,18 @@
   /* ── 留言板：给新人留言（公开区 / 解锁后，格式统一） ── */
   .guestbook {
     margin-top: 24px;
-    padding-top: 20px;
-    border-top: 1px dashed var(--border);
+    padding: 18px 16px 16px;
+    border: 1px solid #f0d9c0;
+    border-top: 3px solid var(--festive-red);
+    border-radius: 12px;
+    background: linear-gradient(180deg, #fff6ee 0%, #fffbf6 100%);
+    box-shadow: 0 2px 10px rgba(179,58,44,0.06);
   }
   .guestbook-title {
     font-family: var(--font-serif);
     font-size: 1rem;
     font-weight: 700;
-    color: var(--accent);
+    color: var(--festive-red);
     letter-spacing: 0.03em;
     margin-bottom: 4px;
   }
@@ -503,24 +510,24 @@
   .guestbook-form textarea {
     width: 100%;
     padding: 12px 16px;
-    border: 1.5px solid var(--border);
+    border: 1.5px solid #eccfb0;
     border-radius: 8px;
     font-size: 1rem;
     font-family: inherit;
     color: var(--text);
-    background: #fdfcf9;
+    background: #fffdf9;
     outline: none;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s;
     -webkit-appearance: none;
   }
   .guestbook-form input:focus,
   .guestbook-form textarea:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(139,111,78,0.1);
+    border-color: var(--festive-red);
+    box-shadow: 0 0 0 3px rgba(179,58,44,0.12);
   }
   .guestbook-form input::placeholder,
   .guestbook-form textarea::placeholder {
-    color: #c4b9a6;
+    color: #cbb59c;
   }
   .guestbook-form textarea {
     resize: vertical;
@@ -532,6 +539,14 @@
     animation: shake 0.4s ease;
     border-color: var(--error);
   }
+  /* 提交按钮走喜庆红金，区别于通用的暖棕 .btn */
+  .guestbook .btn {
+    background: linear-gradient(180deg, var(--festive-red) 0%, var(--festive-red-hover) 100%);
+    border: 1px solid #a02a1e;
+    color: #fff8ec;
+    box-shadow: 0 2px 6px rgba(179,58,44,0.25);
+  }
+  .guestbook .btn:hover { background: linear-gradient(180deg, var(--festive-red-hover) 0%, #7f2016 100%); }
   .guestbook-msg {
     font-size: 0.88rem;
     min-height: 1.4em;
