@@ -25,9 +25,9 @@
     --radius: 12px;
     --wax: #a1384a;   /* 蜡封红：破蜡开信的时刻（解锁按钮 / 信件抬头），区别于通用的暖棕 accent */
     --wax-hover: #83313f;
-    --festive-red: #b33a2c;    /* 喜庆红：留言板主色 */
-    --festive-red-hover: #94291c;
-    --festive-gold: #c69a3e;   /* 喜庆金：留言板点缀 */
+    --festive-red: #c2576a;    /* 玫瑰红：留言板主色（呼应信封粉，取代旧砖红） */
+    --festive-red-hover: #a9475a;
+    --festive-gold: #c9a35a;   /* 喜庆金：留言板点缀（按钮金箔描边） */
     --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
   }
 
@@ -482,11 +482,11 @@
   .guestbook {
     margin-top: 24px;
     padding: 18px 16px 16px;
-    border: 1px solid #f0d9c0;
+    border: 1px solid #f1d6d9;
     border-top: 3px solid var(--festive-red);
     border-radius: 12px;
-    background: linear-gradient(180deg, #fff6ee 0%, #fffbf6 100%);
-    box-shadow: 0 2px 10px rgba(179,58,44,0.06);
+    background: linear-gradient(180deg, #fdf3f4 0%, #fef8f6 100%);
+    box-shadow: 0 2px 10px rgba(194,87,106,0.07);
   }
   .guestbook-title {
     font-family: var(--font-serif);
@@ -510,24 +510,25 @@
   .guestbook-form textarea {
     width: 100%;
     padding: 12px 16px;
-    border: 1.5px solid #eccfb0;
+    border: 1.5px solid #efd3d6;
     border-radius: 8px;
     font-size: 1rem;
     font-family: inherit;
     color: var(--text);
-    background: #fffdf9;
+    background: #fffdfc;
     outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
     -webkit-appearance: none;
   }
   .guestbook-form input:focus,
   .guestbook-form textarea:focus {
     border-color: var(--festive-red);
-    box-shadow: 0 0 0 3px rgba(179,58,44,0.12);
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(194,87,106,0.13);
   }
   .guestbook-form input::placeholder,
   .guestbook-form textarea::placeholder {
-    color: #cbb59c;
+    color: #c2a8a0;
   }
   .guestbook-form textarea {
     resize: vertical;
@@ -539,14 +540,15 @@
     animation: shake 0.4s ease;
     border-color: var(--error);
   }
-  /* 提交按钮走喜庆红金，区别于通用的暖棕 .btn */
+  /* 提交按钮走玫瑰金箔，区别于通用的暖棕 .btn */
   .guestbook .btn {
     background: linear-gradient(180deg, var(--festive-red) 0%, var(--festive-red-hover) 100%);
-    border: 1px solid #a02a1e;
-    color: #fff8ec;
-    box-shadow: 0 2px 6px rgba(179,58,44,0.25);
+    border: 1px solid var(--festive-red-hover);
+    border-top: 1px solid var(--festive-gold);     /* 金箔描边：喜庆金的点睛之处 */
+    color: #fff6f7;
+    box-shadow: 0 2px 8px rgba(194,87,106,0.28);
   }
-  .guestbook .btn:hover { background: linear-gradient(180deg, var(--festive-red-hover) 0%, #7f2016 100%); }
+  .guestbook .btn:hover { background: linear-gradient(180deg, var(--festive-red-hover) 0%, #91394b 100%); }
   .guestbook-msg {
     font-size: 0.88rem;
     min-height: 1.4em;
