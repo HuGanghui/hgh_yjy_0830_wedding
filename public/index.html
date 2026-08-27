@@ -7,6 +7,10 @@
 <title>hgh&amp;yjy wedding</title>
 <link rel="preload" as="fetch" href="data.json" crossorigin>
 <style>
+  /* 霞鹜文楷（LXGW WenKai，SIL OFL 开源）自托管：按 unicode-range 分片，
+     浏览器只下载信件实际用到的字，加载轻；内容改动无需重新打包。 */
+  @import url('fonts/lxgw-wenkai/lxgwwenkai-regular.css');
+
   /* ── Reset & Base ──────────────────────────── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -52,8 +56,8 @@
     --festive-red-hover: #a9475a;
     --festive-gold: #c9a35a;   /* 喜庆金：留言板点缀（按钮金箔描边） */
     --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
-    /* 手写体：楷体/行楷给人亲笔写信的暖意（Apple 与 Windows 常见，安卓无则优雅回退衬线） */
-    --font-hand: "Xingkai SC", "Kaiti SC", "STXingkai", "STKaiti", "KaiTi", "楷体", "华文行楷", var(--font-serif);
+    /* 手写体：霞鹜文楷（自托管 OFL）打底，全设备统一；其余系统楷体/行楷作退化兜底 */
+    --font-hand: "LXGW WenKai", "Xingkai SC", "Kaiti SC", "STXingkai", "STKaiti", "KaiTi", "楷体", "华文行楷", var(--font-serif);
     /* 英文手写体（Caveat 自托管）：只认拉丁字母；中文请用 --font-hand */
     --font-hand-latin: "Caveat", "Segoe Script", "Comic Sans MS", cursive, var(--font-hand);
   }
