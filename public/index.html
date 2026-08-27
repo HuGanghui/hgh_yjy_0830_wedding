@@ -10,6 +10,29 @@
   /* ── Reset & Base ──────────────────────────── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  /* Caveat（Google 免费字体）自托管：拉丁字母手写体，可变字重 400–700。
+     仅覆盖英文字母/数字，不含中文字形——中文走 --font-hand 的楷体/行楷栈。 */
+  @font-face {
+    font-family: 'Caveat';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url('fonts/Caveat-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+                   U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+                   U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: 'Caveat';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url('fonts/Caveat-latin-ext.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+                   U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF,
+                   U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+
   :root {
     --bg: #faf8f5;
     --card-bg: #ffffff;
@@ -31,6 +54,8 @@
     --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
     /* 手写体：楷体/行楷给人亲笔写信的暖意（Apple 与 Windows 常见，安卓无则优雅回退衬线） */
     --font-hand: "Xingkai SC", "Kaiti SC", "STXingkai", "STKaiti", "KaiTi", "楷体", "华文行楷", var(--font-serif);
+    /* 英文手写体（Caveat 自托管）：只认拉丁字母；中文请用 --font-hand */
+    --font-hand-latin: "Caveat", "Segoe Script", "Comic Sans MS", cursive, var(--font-hand);
   }
 
   html { font-size: 16px; }
