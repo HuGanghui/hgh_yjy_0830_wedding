@@ -7,15 +7,15 @@
 <title>hgh&amp;yjy wedding</title>
 <link rel="preload" as="fetch" href="data.json" crossorigin>
 <style>
-  /* 霞鹜文楷（LXGW WenKai，SIL OFL 开源）自托管：按 unicode-range 分片，
-     浏览器只下载信件实际用到的字，加载轻；内容改动无需重新打包。 */
-  @import url('fonts/lxgw-wenkai/lxgwwenkai-regular.css');
+  /* 思源宋体（Noto Serif SC，SIL OFL）自托管：全站中文统一衬线。按 unicode-range
+     分片，浏览器只下载实际用到的字，加载轻；内容改动无需重新打包。 */
+  @import url('fonts/noto-serif-sc/noto-serif-sc-regular.css');
 
   /* ── Reset & Base ──────────────────────────── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   /* Caveat（Google 免费字体）自托管：拉丁字母手写体，可变字重 400–700。
-     仅覆盖英文字母/数字，不含中文字形——中文走 --font-hand 的楷体/行楷栈。 */
+     仅覆盖英文字母/数字，不含中文字形——中文走自托管的思源宋体(--font-serif)。 */
   @font-face {
     font-family: 'Caveat';
     font-style: normal;
@@ -55,10 +55,10 @@
     --festive-red: #c2576a;    /* 玫瑰红：留言板主色（呼应信封粉，取代旧砖红） */
     --festive-red-hover: #a9475a;
     --festive-gold: #c9a35a;   /* 喜庆金：留言板点缀（按钮金箔描边） */
-    --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif SC", "STSong", "SimSun", serif;
-    /* 手写体：霞鹜文楷（自托管 OFL）打底，全设备统一；其余系统楷体/行楷作退化兜底 */
-    --font-hand: "LXGW WenKai", "Xingkai SC", "Kaiti SC", "STXingkai", "STKaiti", "KaiTi", "楷体", "华文行楷", var(--font-serif);
-    /* 英文手写体（Caveat 自托管）：只认拉丁字母；中文请用 --font-hand */
+    --font-serif: "Noto Serif SC", Georgia, "Times New Roman", "Songti SC", "STSong", "SimSun", serif;
+    /* 全站中文统一思源宋体（Noto Serif SC 自托管）：正文与落款同衬线，安卓不再退化 */
+    --font-hand: var(--font-serif);
+    /* 英文手写体（Caveat 自托管）：只认拉丁字母 */
     --font-hand-latin: "Caveat", "Segoe Script", "Comic Sans MS", cursive, var(--font-hand);
   }
 
