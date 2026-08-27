@@ -35,7 +35,10 @@
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
                  "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
-    background: var(--bg);
+    /* 背景：素雅暖米色 + 顶部一抹极淡玫瑰暖光（呼应信封粉，低透明度不抢花瓣） */
+    background:
+      radial-gradient(140% 90% at 50% -12%, rgba(194, 87, 106, 0.06), transparent 58%),
+      var(--bg);
     color: var(--text);
     min-height: 100dvh;
     display: flex;
@@ -592,6 +595,28 @@
     6%   { opacity: .9; }
     100% { transform: translate3d(var(--sway, 12vw), 108vh, 0) rotate(var(--spin, 540deg)); opacity: .9; }
   }
+  /* ── 页面装饰：邀请函式细框 + 四角蜡印点（简约素雅） ── */
+  /* 双细线矩形描边如请柬花边；四角一粒蜡封红圆点，呼应「破蜡开信」的主题。
+     纯装饰：pointer-events:none 不挡点击；位于卡片与花瓣之上、音乐按钮之下。 */
+  .page-frame {
+    --pf-inset: 12px;          /* 距视口的留白 */
+    --pf-dot: 9px;             /* 角点距边框的距离 */
+    position: fixed;
+    inset: var(--pf-inset);
+    z-index: 500;              /* 高于卡片/花瓣，低于音乐按钮(900)与 lightbox */
+    pointer-events: none;
+    border-radius: 8px;
+    border: 1px solid rgba(139, 111, 78, 0.22);          /* 外细线：暖棕 */
+    box-shadow: inset 0 0 0 1px rgba(139, 111, 78, 0.10); /* 内第二道更淡的细线 */
+    background:
+      radial-gradient(circle 2.5px at var(--pf-dot) var(--pf-dot), var(--wax) 92%, transparent),
+      radial-gradient(circle 2.5px at calc(100% - var(--pf-dot)) var(--pf-dot), var(--wax) 92%, transparent),
+      radial-gradient(circle 2.5px at var(--pf-dot) calc(100% - var(--pf-dot)), var(--wax) 92%, transparent),
+      radial-gradient(circle 2.5px at calc(100% - var(--pf-dot)) calc(100% - var(--pf-dot)), var(--wax) 92%, transparent);
+  }
+  @media (max-width: 480px) {
+    .page-frame { --pf-inset: 7px; --pf-dot: 5px; border-radius: 6px; }
+  }
   @media (prefers-reduced-motion: reduce) {
     #petals { display: none; }   /* 尊重「减弱动态效果」系统设置 */
     .music-btn.playing { animation: none; }   /* 音符不再旋转，但播放功能保留 */
@@ -753,6 +778,9 @@
 
 <!-- ═══ 花瓣飘落：扫码进页全程氛围（纯装饰） ═══ -->
 <div id="petals" aria-hidden="true"></div>
+
+<!-- ═══ 页面细框：邀请函式描边 + 四角蜡印点（纯装饰，不挡交互） ═══ -->
+<div class="page-frame" aria-hidden="true"></div>
 
 <!-- ═══ 背景音乐：隐藏 audio + 浮动音符控制按钮（有 music 字段的条目才显示） ═══ -->
 <audio id="bg-music" loop preload="auto"></audio>
