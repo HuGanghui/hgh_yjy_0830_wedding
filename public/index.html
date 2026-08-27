@@ -318,21 +318,7 @@
     to   { opacity: 1; transform: translateY(0); }
   }
   .letter-card {
-    position: relative;
-    background: linear-gradient(180deg, #fffdf8 0%, #fbf3e4 100%);
-    border: 1px solid #eadfc9;
-    border-radius: 14px;
-    box-shadow: var(--shadow);
-    padding: 28px 24px 24px;
-  }
-  .letter-card::before {   /* 顶部信封翻盖装饰线 */
-    content: "";
-    position: absolute;
-    top: 0; left: 16px; right: 16px;
-    height: 14px;
-    background: linear-gradient(180deg, #f2e2c0, rgba(242,226,192,0));
-    border-radius: 0 0 12px 12px;
-    opacity: 0.7;
+    position: relative;   /* 无外框，信文直接落在页面主卡片上 */
   }
   .letter-body {
     font-family: var(--font-serif);   /* 正文如信纸上的字 */
