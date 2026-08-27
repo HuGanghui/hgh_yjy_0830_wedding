@@ -334,14 +334,6 @@
     border-radius: 0 0 12px 12px;
     opacity: 0.7;
   }
-  .letter-head {
-    font-family: var(--font-serif);   /* 信件抬头：衬线 + 蜡封红 */
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--wax);
-    letter-spacing: 0.05em;
-    margin-bottom: 16px;
-  }
   .letter-body {
     font-family: var(--font-serif);   /* 正文如信纸上的字 */
     font-size: 1.05rem;
@@ -734,7 +726,6 @@
   <!-- ═══ 专属信件：答对 / 路由命中后展示 ═══ -->
   <div id="letter" class="letter">
     <div class="letter-card">
-      <div class="letter-head"><span id="letter-to"></span>，</div>
       <div class="letter-body" id="content-text"></div>
       <div class="media" id="secret-images"></div>
       <div class="media" id="secret-videos"></div>
@@ -814,7 +805,6 @@
   const $loading      = document.getElementById('loading');
   const $public       = document.getElementById('public');
   const $letter       = document.getElementById('letter');
-  const $letterTo     = document.getElementById('letter-to');
   const $letterSign   = document.getElementById('letter-sign');
   const $stateErr     = document.getElementById('state-error');
   const $photoWrap    = document.getElementById('photo-wrap');
@@ -1029,7 +1019,6 @@
   // 隐藏公开区（照片/描述/输入），跳到信件卡片：致[to] + 正文 + 图片/视频 + 落款。
   function renderLetter(to, payload, signer) {
     $public.classList.remove('active');
-    if (to) $letterTo.textContent = to;
     // 落款：按收件人指定（config 每封信 signer 字段），缺省回退「来自新人的祝福」
     $letterSign.textContent = signer ? `—— ${signer}` : '—— 来自新人的祝福';
     if (payload && payload.text) $content.textContent = payload.text;

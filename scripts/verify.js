@@ -310,18 +310,19 @@ async function checkBrowserFlow(data, configById) {
     if (!errShown) { fail('浏览器: 错误答案未提示「答案不正确」'); }
     else pass('浏览器: 错误答案被拒绝并提示');
 
-    // ③ 正确答案 → 专属信件视图显示，致[to] 与正文匹配
+    // ③ 正确答案 → 专属信件视图显示，正文与 config 明文一致（收信人即解锁出的信件）
     $input.value = answer;
     $btn.click();
     const letterShown = await waitFor(win, () => doc.getElementById('letter').classList.contains('active'));
     if (!letterShown) { fail('浏览器: 正确答案未解锁出专属信件'); return; }
-    const toShown = doc.getElementById('letter-to').textContent;
-    const expectedTo = (data[gatedId].letters[0] && data[gatedId].letters[0].to) || '';
-    if (toShown !== expectedTo) {
-      fail(`浏览器: 信件收信人应为「${expectedTo}」→ 实际「${toShown}」`);
+    const bodyShown = doc.getElementById('content-text').textContent.trim();
+    const cfgLetters = (configById[gatedId] && configById[gatedId].letters) || [];
+    const expectedBody = (cfgLetters[0] && cfgLetters[0].secret && cfgLetters[0].secret.text || '').trim();
+    if (expectedBody && bodyShown !== expectedBody) {
+      fail('浏览器: 专属信件正文与 config 明文不一致');
       return;
     }
-    pass(`浏览器: 正确答案解锁出专属信件（致 ${toShown}）`);
+    pass(`浏览器: 正确答案解锁出专属信件（正文与 config 明文一致）`);
     const hasMedia =
       doc.getElementById('secret-images').children.length > 0 ||
       doc.getElementById('secret-videos').children.length > 0;
@@ -410,12 +411,14 @@ async function checkMultiLetterRouting(data, configById) {
       doc2.getElementById('unlock-btn').click();
       const letterShown = await waitFor(w2, () => doc2.getElementById('letter').classList.contains('active'));
       if (!letterShown) { fail(`一码多信: [${gatedId}/${letter.to}] 输入正确收信码后未出现专属信件`); continue; }
-      const toShown = doc2.getElementById('letter-to').textContent;
-      if (toShown !== letter.to) {
-        fail(`一码多信: [${gatedId}/${letter.to}] 应致「${letter.to}」→ 实际「${toShown}」`);
+      const bodyShown = doc2.getElementById('content-text').textContent.trim();
+      const cfgLetters = (configById[gatedId] && configById[gatedId].letters) || [];
+      const expectedBody = (cfgLetters[i] && cfgLetters[i].secret && cfgLetters[i].secret.text || '').trim();
+      if (expectedBody && bodyShown !== expectedBody) {
+        fail(`一码多信: [${gatedId}/${letter.to}] 正文与 config 明文不一致`);
         continue;
       }
-      pass(`一码多信: [${gatedId}/${letter.to}] 输入收信码解锁出专属信件（致 ${toShown}）`);
+      pass(`一码多信: [${gatedId}/${letter.to}] 输入收信码解锁出专属信件（正文与 config 明文一致）`);
     } finally {
       d2.window.close();
     }
