@@ -125,11 +125,11 @@ async function main() {
   const errors = [];
 
   for (const entry of config.entries) {
-    const { id, to, question, answer, description, photo, video, videoCredit, music, lyrics, secret, guestbook, emphasis } = entry;
+    const { id, to, question, answer, description, photo, photoCredit, video, videoCredit, music, lyrics, secret, guestbook, emphasis } = entry;
 
-    // 校验必填字段（to 可选；无收件人条目只需 id/description）
-    if (!id || !description) {
-      errors.push(`[${id || '???'}] 缺少必填字段 (id/description)（to 可选）`);
+    // 校验必填字段（to/description 可选——正文可整体放 emphasis，照片署名走 photoCredit）
+    if (!id) {
+      errors.push(`[${id || '???'}] 缺少必填字段 id`);
       continue;
     }
     if (output[id]) {
@@ -301,11 +301,12 @@ async function main() {
     }
 
     // 通用可选项（两个分支共用）：歌词路径 + 该条目关闭留言板（guestbook:false 才写字段，默认开启）
-    // + 描述落点突出块（emphasis，公开纯文本，不加密）
+    // + 描述落点突出块（emphasis，公开纯文本，不加密）+ 照片右下角署名（photoCredit）
     outEntry = {
       ...outEntry,
       ...(lyricsUrl ? { lyrics: lyricsUrl } : {}),
       ...(emphasis ? { emphasis } : {}),
+      ...(photoCredit ? { photoCredit } : {}),
       ...(guestbook === false ? { guestbook: false } : {})
     };
     output[id] = outEntry;

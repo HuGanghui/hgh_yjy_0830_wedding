@@ -112,11 +112,28 @@
   .public.active { display: block; }
 
   .photo-wrap {
+    position: relative;          /* 让 photo-credit 叠加在图片右下角 */
     text-align: center;
     margin-bottom: 18px;
   }
   .photo-wrap picture {
     display: block;
+  }
+  /* 照片右下角署名（photoCredit，字段驱动）：小字 + 半透明底，任何照片上都可读 */
+  .photo-credit {
+    display: none;             /* 有 photoCredit 字段才由 JS 显示，避免空署名残留 */
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    max-width: calc(100% - 16px);
+    font-size: 0.78rem;
+    line-height: 1.6;
+    text-align: right;
+    color: #fff;
+    background: rgba(20, 24, 28, 0.5);
+    padding: 2px 8px;
+    border-radius: 4px;
+    pointer-events: none;        /* 不挡点击：照片仍可点开放大 */
   }
   .photo-wrap img {
     width: 100%;
@@ -679,6 +696,7 @@
       <picture>
         <img id="public-photo" alt="照片">
       </picture>
+      <p class="photo-credit" id="public-photo-credit"></p>
     </div>
     <p class="description" id="description"></p>
 
@@ -863,6 +881,7 @@
   const $stateErr     = document.getElementById('state-error');
   const $photoWrap    = document.getElementById('photo-wrap');
   const $photo        = document.getElementById('public-photo');
+  const $photoCredit  = document.getElementById('public-photo-credit');
   const $description  = document.getElementById('description');
   const $emphasis     = document.getElementById('emphasis');
   const $publicVideoWrap = document.getElementById('public-video');
@@ -928,7 +947,22 @@
       renderPublicPhoto(entry.photo, entry.photoW, entry.photoH);
       $photoWrap.style.display = 'block';
     }
-    $description.textContent = entry.description || '';
+    // 正文描述：有才显示（无 description 的条目——如正文整体放 emphasis——整块隐藏，不渲染空框）
+    if (entry.description) {
+      $description.textContent = entry.description;
+      $description.style.display = 'block';
+    } else {
+      $description.textContent = '';
+      $description.style.display = 'none';
+    }
+    // 照片右下角署名（photoCredit）：有字段才显示并填充
+    if (entry.photoCredit) {
+      $photoCredit.textContent = entry.photoCredit;
+      $photoCredit.style.display = 'block';
+    } else {
+      $photoCredit.textContent = '';
+      $photoCredit.style.display = 'none';
+    }
     // 描述落点突出块（emphasis）：有该字段的条目才显示，纯文本（textContent 防注入）
     if (entry.emphasis) {
       $emphasis.textContent = entry.emphasis;

@@ -1239,6 +1239,79 @@ async function checkPublicVideo(data) {
   }
 }
 
+// ── 照片右下角署名（photoCredit，浏览器冒烟） ────────────
+// 有 photoCredit 的条目：署名叠加在照片右下角、文本与字段一致；无 photoCredit 条目署名留空；
+// 顺带校验：无 description 的条目（正文整体放 emphasis）不渲染空描述框。
+async function checkPhotoCredit(data) {
+  const pcId = '__photo_credit_test__';
+  const CREDIT = 'Credit to：测试者';
+  const TEXT = '只有 emphasis 的话';
+  const withPc = Object.assign({}, data, {
+    // 无 description + 有 emphasis + 有 photoCredit：三件事一次测
+    [pcId]: { photo: 'media/__photo_credit_test__/photo/t.jpg', photoCredit: CREDIT, emphasis: TEXT }
+  });
+
+  // ── 场景 A：photoCredit 显示、文本一致；无 description 时不渲染空描述框 ──
+  const dom = createDom(withPc, pcId);
+  const win = dom.window;
+  const doc = win.document;
+  try {
+    if (!await waitFor(win, () => doc.getElementById('public').classList.contains('active'))) {
+      fail('照片署名: 公开区未渲染'); return;
+    }
+    const $credit = doc.getElementById('public-photo-credit');
+    if ($credit.textContent !== CREDIT) {
+      fail(`照片署名: photoCredit 文本与字段不一致（${$credit.textContent}）`); return;
+    }
+    pass('照片署名: photoCredit 文本与字段一致');
+    const $desc = doc.getElementById('description');
+    if ($desc.style.display === 'none') {
+      pass('照片署名: 无 description 条目描述框隐藏');
+    } else {
+      fail('照片署名: 无 description 条目描述框未隐藏');
+    }
+  } finally {
+    dom.window.close();
+  }
+
+  // ── 场景 B：真实数据中有 photoCredit 的条目（weak-light）端到端 ──
+  const realId = Object.keys(data).find(id => data[id] && data[id].photoCredit);
+  if (realId) {
+    const domB = createDom(data, realId);
+    const winB = domB.window;
+    const docB = winB.document;
+    try {
+      await waitFor(winB, () => docB.getElementById('public').classList.contains('active'));
+      if (docB.getElementById('public-photo-credit').textContent !== data[realId].photoCredit) {
+        fail(`照片署名: ${realId} photoCredit 端到端不一致`); return;
+      }
+      pass(`照片署名: 真实条目 ${realId} 署名端到端一致`);
+    } finally {
+      domB.window.close();
+    }
+  } else {
+    pass('照片署名: 当前数据无带 photoCredit 的条目，跳过端到端断言');
+  }
+
+  // ── 场景 C：无 photoCredit 条目 → 署名留空 ──
+  const plainId = Object.keys(data).find(id => data[id] && !data[id].photoCredit);
+  if (!plainId) { pass('照片署名: 当前数据所有条目都带 photoCredit，跳过留空校验'); return; }
+  const domC = createDom(data, plainId);
+  const winC = domC.window;
+  const docC = winC.document;
+  try {
+    await waitFor(winC, () => docC.getElementById('public').classList.contains('active'));
+    const $c = docC.getElementById('public-photo-credit');
+    if ($c.textContent === '' && $c.style.display === 'none') {
+      pass('照片署名: 无 photoCredit 条目署名留空且隐藏');
+    } else {
+      fail('照片署名: 无 photoCredit 条目署名未留空/未隐藏');
+    }
+  } finally {
+    domC.window.close();
+  }
+}
+
 // ── 入口 ───────────────────────────────────────────────
 async function main() {
   console.log('🔍 构建产物自检');
@@ -1324,6 +1397,13 @@ async function main() {
       fail(`[${id}] config 有 videoCredit 但 data 未写入对应内容（未重新构建？）`);
     } else if (!cfg.videoCredit && entry.videoCredit) {
       fail(`[${id}] data 有 videoCredit 但 config 未声明（残留？）`);
+    }
+
+    // 照片右下角署名（photoCredit）双向一致性：config 声明 ⇔ data 写入（纯文本透传，应完全一致）
+    if (cfg.photoCredit && entry.photoCredit !== cfg.photoCredit) {
+      fail(`[${id}] config 有 photoCredit 但 data 未写入对应内容（未重新构建？）`);
+    } else if (!cfg.photoCredit && entry.photoCredit) {
+      fail(`[${id}] data 有 photoCredit 但 config 未声明（残留？）`);
     }
 
     // 该条目关闭留言板（guestbook:false）双向一致性：config 声明 ⇔ data 写入
@@ -1433,6 +1513,9 @@ async function main() {
 
   section('公开共享视频 · 照片下方扫码即见');
   await checkPublicVideo(data);
+
+  section('照片右下角署名 · photoCredit');
+  await checkPhotoCredit(data);
 
   section('总结');
   console.log(`共 ${checks} 项检查，失败 ${failures} 项`);
