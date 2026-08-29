@@ -444,25 +444,6 @@
   }
   .state-error.active { display: block; }
 
-  /* ── 页脚：开发者联系信息（右下角小字，浅色低调，纯展示） ── */
-  .site-footer {
-    position: fixed;
-    right: 30px;             /* 让开右下角 page-frame 的蜡封红点 */
-    bottom: 10px;
-    z-index: 40;             /* 盖过卡片背景，但低于花瓣/音乐钮；仅作衬底小字 */
-    padding: 2px 4px;
-    text-align: right;
-    pointer-events: none;    /* 不挡任何点击 */
-    opacity: 0.4;            /* 浅色：不抢正文 */
-  }
-  .site-footer-line {
-    font-family: var(--font-serif);
-    font-size: 0.72rem;
-    line-height: 1.5;
-    letter-spacing: 0.02em;
-    color: var(--text);
-  }
-
   /* ── Responsive ────────────────────────────── */
   @media (max-width: 400px) {
     .card { padding: 24px 18px; }
@@ -837,11 +818,6 @@
   </div>
 
 </div>
-
-<!-- ═══ 页脚：开发者联系信息（body 直属，fixed 固定视口右下角，随卡片滚动不移动） ═══ -->
-<footer class="site-footer">
-  <p class="site-footer-line">页面开发微信：hgh84313198</p>
-</footer>
 
 <!-- ═══ Lightbox：图片放大预览 ═══ -->
 <div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="图片放大预览">

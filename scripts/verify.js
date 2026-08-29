@@ -1312,29 +1312,6 @@ async function checkPhotoCredit(data) {
   }
 }
 
-// ── 页脚：开发者 & 联系信息（静态展示，浏览器冒烟） ────────
-// 页脚随页面常驻：存在 site-footer 元素，且包含开发者微信联系方式。
-async function checkSiteFooter(data) {
-  const dom = createDom(data, Object.keys(data)[0]);
-  const win = dom.window;
-  const doc = win.document;
-  try {
-    if (!await waitFor(win, () => doc.getElementById('public').classList.contains('active'))) {
-      fail('页脚: 公开区未渲染'); return;
-    }
-    const $footer = doc.querySelector('footer.site-footer');
-    if (!$footer) { fail('页脚: 未找到 site-footer 元素'); return; }
-    pass('页脚: site-footer 元素存在');
-    const text = $footer.textContent;
-    if (!/hgh84313198/.test(text)) { fail('页脚: 缺少微信联系方式'); return; }
-    pass('页脚: 含开发者微信联系方式');
-    if (!/hgh/.test(text)) { fail('页脚: 缺少开发者署名'); return; }
-    pass('页脚: 含开发者署名');
-  } finally {
-    dom.window.close();
-  }
-}
-
 // ── 入口 ───────────────────────────────────────────────
 async function main() {
   console.log('🔍 构建产物自检');
@@ -1539,9 +1516,6 @@ async function main() {
 
   section('照片右下角署名 · photoCredit');
   await checkPhotoCredit(data);
-
-  section('页脚 · 开发者 & 联系信息');
-  await checkSiteFooter(data);
 
   section('总结');
   console.log(`共 ${checks} 项检查，失败 ${failures} 项`);
