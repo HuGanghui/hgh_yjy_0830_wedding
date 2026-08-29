@@ -444,6 +444,22 @@
   }
   .state-error.active { display: block; }
 
+  /* ── 页脚：开发者 & 联系信息（小字，收在页底） ── */
+  .site-footer {
+    margin-top: 30px;
+    padding: 16px 12px 6px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+  .site-footer-line {
+    font-family: var(--font-serif);
+    font-size: 0.78rem;
+    line-height: 1.8;
+    letter-spacing: 0.02em;
+    color: var(--text);
+    opacity: 0.55;
+  }
+
   /* ── Responsive ────────────────────────────── */
   @media (max-width: 400px) {
     .card { padding: 24px 18px; }
@@ -816,6 +832,11 @@
     <p style="font-size:2rem;margin-bottom:12px">😕</p>
     <p id="state-error-msg">无法加载内容</p>
   </div>
+
+  <!-- ═══ 页脚：开发者 & 联系信息（小字，推销引导） ═══ -->
+  <footer class="site-footer">
+    <p class="site-footer-line">页面设计&nbsp;·&nbsp;开发：hgh&nbsp;｜&nbsp;微信：hgh84313198&nbsp;｜&nbsp;想要这样一份属于你们的专属页面？欢迎来找我～</p>
+  </footer>
 
 </div>
 
